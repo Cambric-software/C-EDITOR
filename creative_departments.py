@@ -1,5 +1,5 @@
 """
-Video Studio and 2D Animation Studio for Homework & Document Studio.
+Video Studio and 2D Animation Studio for C EDITOR.
 
 Design principles
 ─────────────────

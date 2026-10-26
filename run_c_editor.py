@@ -1,4 +1,4 @@
-"""Start Homework & Document Studio and install the desktop shortcut once."""
+"""Start C EDITOR and install the desktop shortcut once."""
 from pathlib import Path
 import runpy
 
@@ -12,5 +12,5 @@ if __name__ == "__main__":
     except Exception:
         pass
     runpy.run_path(
-        str(ROOT / "homework_document_studio.py"),
+        str(ROOT / "c_editor.py"),
         run_name="__main__")

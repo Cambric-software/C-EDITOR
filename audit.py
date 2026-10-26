@@ -1,13 +1,13 @@
 import sys, ast, re
 sys.stdout.reconfigure(encoding='utf-8')
 
-src = open('homework_document_studio.py', encoding='utf-8').read()
+src = open('c_editor.py', encoding='utf-8').read()
 ast.parse(src)
 print('SYNTAX OK')
 
 import tkinter as tk
 tk.Tk.mainloop = lambda self: None
-import homework_document_studio as hds
+import c_editor as hds
 app = hds.Studio()
 
 results = []

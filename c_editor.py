@@ -1,5 +1,5 @@
 """
-Homework & Document Studio  v4
+C EDITOR  v4
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Single-window suite with a left sidebar navigator.
 All 6 departments live inside one window — no separate Toplevel windows.
@@ -35,12 +35,12 @@ if os.name == "nt":
         except Exception: pass
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-APP      = "Homework & Document Studio"
-FORMAT   = "HomeworkDocumentStudio"
+APP      = "C EDITOR"
+FORMAT   = "CEditor"
 VERSION  = 4
 ROOT     = Path(__file__).resolve().parent
 ASSETS   = ROOT / "assets"
-DATA     = Path.home() / ".homework_document_studio"
+DATA     = Path.home() / ".c_editor"
 RECOVERY = DATA / "recovery"
 for _d in (DATA, RECOVERY, DATA/"assets", DATA/"templates"):
     _d.mkdir(exist_ok=True)
@@ -6429,7 +6429,7 @@ class Studio(tk.Tk):
             if pg:
                 pg.background=bg; pg.objects.clear()
                 # accent bar
-                from homework_document_studio import DesignObject
+                from c_editor import DesignObject
                 pg.objects.append(DesignObject(kind="rect",x=0,y=0,w=w,h=max(8,h//30),
                                                fill=acc,stroke=""))
                 # text
@@ -6805,7 +6805,7 @@ class Studio(tk.Tk):
                 # readme
                 zf.writestr("README.txt",
                     f"Project: {self.doc.title}\n"
-                    f"Exported by Homework & Document Studio\n"
+                    f"Exported by C EDITOR\n"
                     f"Open .hds file with the Studio app.\n")
             self.status.set(f"ZIP exported: {Path(p).name}")
             messagebox.showinfo(APP,f"Project packed into:\n{p}")
@@ -6914,7 +6914,7 @@ class Studio(tk.Tk):
         def create_example():
             ex=scripts_dir/"example_plugin.py"
             ex.write_text(
-                '"""Example plugin for Homework & Document Studio.\n\nPLUGIN_NAME = "Example Plugin"\n"""\n\nPLUGIN_NAME = "Example Plugin"\n\ndef run(app=None):\n"""Called when user clicks Run in the plugin manager."""\nif app:\napp.status.set("Hello from plugin!")\nreturn "Plugin ran successfully"\n',
+                '"""Example plugin for C EDITOR.\n\nPLUGIN_NAME = "Example Plugin"\n"""\n\nPLUGIN_NAME = "Example Plugin"\n\ndef run(app=None):\n"""Called when user clicks Run in the plugin manager."""\nif app:\napp.status.set("Hello from plugin!")\nreturn "Plugin ran successfully"\n',
                 encoding="utf-8")
             out_var.set(f"Created: {ex}")
             win.destroy(); self._plugins_menu()
