@@ -15,6 +15,11 @@ dependencies:
       path: packages/cambric_design
   path_provider: ^2.1.4
 
+dependency_overrides:
+  jni: 1.0.3
+  jni_flutter: 1.0.3
+  path_provider_android: 2.2.10
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

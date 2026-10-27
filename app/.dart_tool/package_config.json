@@ -93,13 +93,13 @@
     },
     {
       "name": "jni",
-      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/jni-1.1.0",
+      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/jni-1.0.3",
       "packageUri": "lib/",
       "languageVersion": "3.3"
     },
     {
       "name": "jni_flutter",
-      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/jni_flutter-1.0.4+1",
+      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/jni_flutter-1.0.3",
       "packageUri": "lib/",
       "languageVersion": "3.3"
     },
@@ -183,9 +183,9 @@
     },
     {
       "name": "path_provider_android",
-      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_android-2.3.1",
+      "rootUri": "file:///C:/Users/m/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_android-2.2.10",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.4"
     },
     {
       "name": "path_provider_foundation",
