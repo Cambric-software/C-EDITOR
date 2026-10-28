@@ -38,3 +38,23 @@ jobs:
         with:
           name: android-build
           path: app/build/app/outputs/flutter-apk/app-release.apk
+
+  release:
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-build
+          path: android
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            windows/**
+            android/**
