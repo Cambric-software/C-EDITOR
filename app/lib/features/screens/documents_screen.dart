@@ -83,7 +83,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             ],
           ),
           const SizedBox(height: Space.sm),
-          Expanded(
+          SizedBox(
+            height: 400,
             child: TextField(
               controller: _controller,
               maxLines: null,
