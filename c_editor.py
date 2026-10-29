@@ -1146,6 +1146,28 @@ class Studio(tk.Tk):
             ("📦 Export ZIP…",self._export_zip),
         ])
 
+        _sub("Help", [("Check for updates...", self._check_for_updates)])
+
+    def _check_for_updates(self):
+        """Opt-in GitHub release check. Never installs; only reports."""
+        import json as _json, urllib.request as _ur, urllib.error as _ue
+        repo = "Cambric-software/C-EDITOR"
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        try:
+            req = _ur.Request(url, headers={"User-Agent": "C-EDITOR"})
+            with _ur.urlopen(req, timeout=8) as r:
+                data = _json.loads(r.read().decode("utf-8"))
+            tag = data.get("tag_name", "")
+            html_url = data.get("html_url", "")
+            if tag:
+                messagebox.showinfo("Updates",
+                    f"Latest release: {tag}\nCurrent: v{VERSION}\n\n{html_url}")
+            else:
+                messagebox.showinfo("Updates", "No published release found.")
+        except _ue.URLError:
+            messagebox.showwarning("Updates", "Could not reach GitHub (offline?).")
+        except Exception as e:
+            messagebox.showerror("Updates", f"Update check failed: {e}")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  DOCUMENTS TAB
