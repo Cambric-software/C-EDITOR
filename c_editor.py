@@ -893,6 +893,8 @@ class Studio(tk.Tk):
                           ("Ellipse",lambda:self._design_add_shape("ellipse")),
                           ("Triangle",lambda:self._design_add_shape("triangle")),
                           ("Star",lambda:self._design_add_shape("star")),
+                          ("Pentagon",lambda:self._design_add_shape("pentagon")),
+                          ("Hexagon",lambda:self._design_add_shape("hexagon")),
                           ("Line",lambda:self._design_add_shape("line")),
                           ("Arrow",lambda:self._design_add_shape("arrow")),
                           ("Image",self._design_add_image)]:
@@ -2549,6 +2551,37 @@ class Studio(tk.Tk):
                     pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
                 flat=[v for pt in pts for v in pt]
                 c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
+            elif k=="triangle":
+                cx,cy=(x0+x1)//2,(y0+y1)//2
+                c.create_polygon(cx,y0,x1,y1,x0,y1,fill=fill,outline=stroke,width=sw)
+            elif k=="star":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(10):
+                    ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
+                    rr=ry if i%2==0 else ry*0.4
+                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
+                flat=[v for pt in pts for v in pt]
+                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
+            elif k=="pentagon":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(5):
+                    ang=_m.radians(i*72-90)
+                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
+                flat=[v for pt in pts for v in pt]
+                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
+            elif k=="hexagon":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(6):
+                    ang=_m.radians(i*60-90)
+                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
+                flat=[v for pt in pts for v in pt]
+                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
             elif k in ("line","arrow"):
                 c.create_line(x0,y0,x1,y1,fill=fill or "#000",width=sw,
                                arrow="last" if k=="arrow" else "none")
@@ -2720,6 +2753,22 @@ class Studio(tk.Tk):
                     rr=ry if i%2==0 else ry*0.4
                     pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
                 d.polygon(pts,fill=fill,outline=stroke,width=sw)
+            elif k=="pentagon":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(5):
+                    ang=_m.radians(i*72-90)
+                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
+                d.polygon(pts,fill=fill,outline=stroke,width=sw)
+            elif k=="hexagon":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(6):
+                    ang=_m.radians(i*60-90)
+                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
+                d.polygon(pts,fill=fill,outline=stroke,width=sw)
             elif k in ("line","arrow"): d.line([x0,y0,x1,y1],fill=fill or "#000",width=sw)
             elif k=="text":
                 try:
@@ -2762,6 +2811,22 @@ class Studio(tk.Tk):
                     ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
                     rr=ry if i%2==0 else ry*0.4
                     pts.append(f"{cx+_m.cos(ang)*r},{cy+_m.sin(ang)*rr}")
+                lines.append(f'<polygon points="{" ".join(pts)}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="pentagon":
+                import math as _m
+                cx,cy=x0+w/2,y0+h/2; rx,ry=w/2,h/2
+                pts=[]
+                for i in range(5):
+                    ang=_m.radians(i*72-90)
+                    pts.append(f"{cx+_m.cos(ang)*rx},{cy+_m.sin(ang)*ry}")
+                lines.append(f'<polygon points="{" ".join(pts)}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="hexagon":
+                import math as _m
+                cx,cy=x0+w/2,y0+h/2; rx,ry=w/2,h/2
+                pts=[]
+                for i in range(6):
+                    ang=_m.radians(i*60-90)
+                    pts.append(f"{cx+_m.cos(ang)*rx},{cy+_m.sin(ang)*ry}")
                 lines.append(f'<polygon points="{" ".join(pts)}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
             elif k=="text":
                 wt="bold" if obj.font_bold else "normal"; sl="italic" if obj.font_it else "normal"
