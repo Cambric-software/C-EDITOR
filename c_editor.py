@@ -2740,6 +2740,12 @@ class Studio(tk.Tk):
             if c<0: break
         return f"{letters}{row+1}"
 
+    def _col_index(self, s: str) -> int:
+        s = s.upper(); r = 0
+        for ch in s:
+            r = r * 26 + ord(ch) - 64
+        return r - 1
+
     def _sheet_draw(self):
         if not hasattr(self, 'sheet_canvas'): return
         c=self.sheet_canvas; c.delete("all")
@@ -2817,6 +2823,23 @@ class Studio(tk.Tk):
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
                 return str(min(vals)) if vals else "0"
+            m=re.match(r"VLOOKUP\((.+),([A-Z]+)(\d+):([A-Z]+)(\d+),(\d+)\)",expr)
+            if m:
+                key=m.group(1).strip().strip('"').strip("'")
+                try: keyv=float(key)
+                except Exception: keyv=None
+                c1=self._col_index(m.group(2)); r1=int(m.group(3))-1
+                c2=self._col_index(m.group(4)); r2=int(m.group(5))-1
+                ci=int(m.group(6))-1
+                for r in range(min(r1,r2),max(r1,r2)+1):
+                    v=self._sheet_data.get(self._sheet_key(r,min(c1,c2)),{}).get("value","")
+                    try: vv=float(v)
+                    except Exception: vv=None
+                    if (keyv is not None and vv==keyv) or (keyv is None and v==key):
+                        col=min(c1,c2)+ci
+                        res=self._sheet_data.get(self._sheet_key(r,col),{}).get("value","")
+                        return res if res!="" else "0"
+                return "#N/A"
             m=re.match(r"COUNTIF\(([A-Z]+)(\d+):([A-Z]+)(\d+),(.+)\)",expr)
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
@@ -2922,7 +2945,7 @@ class Studio(tk.Tk):
     def _sheet_formula_help(self):
         messagebox.showinfo(APP,"Formulas start with =\n""=SUM(A1:B5)\n=AVERAGE(A1:A10)\n=COUNT(A1:A10)\n"
         "=MAX(A1:A10)\n=MIN(A1:A10)\n=COUNTIF(A1:A10,5)\n=SUMIF(A1:A10,5)\n"
-         "=IF(A1>5,\"yes\",\"no\")\n=2+3*4\n\nPress Enter to confirm.")
+         "=VLOOKUP(A1,A2:B10,2)\n=IF(A1>5,\"yes\",\"no\")\n=2+3*4\n\nPress Enter to confirm.")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  SLIDES  methods
