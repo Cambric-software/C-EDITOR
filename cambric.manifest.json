@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "product": {
+    "type": "app",
+    "name": "C EDITOR",
+    "id": "c-editor",
+    "packageId": "com.cambric.c_editor",
+    "version": "4.0.0",
+    "buildNumber": 1,
+    "releaseChannel": "stable",
+    "publisher": "Cambric",
+    "developer": "Cambric",
+    "website": "https://cambric.dev",
+    "repository": "Cambric-software/C-EDITOR"
+  },
+  "platforms": ["windows", "linux", "android"],
+  "capabilities": {"offline": true, "updates": true, "ecosystem": true, "localization": true},
+  "locales": ["en"],
+  "cambricTemplateVersion": "0.1.0",
+  "productLine": "C EDITOR"
+}
