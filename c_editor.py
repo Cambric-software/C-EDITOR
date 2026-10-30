@@ -891,6 +891,8 @@ class Studio(tk.Tk):
             for t,fn in [("Text",self._design_add_text),
                           ("Rect",lambda:self._design_add_shape("rect")),
                           ("Ellipse",lambda:self._design_add_shape("ellipse")),
+                          ("Triangle",lambda:self._design_add_shape("triangle")),
+                          ("Star",lambda:self._design_add_shape("star")),
                           ("Line",lambda:self._design_add_shape("line")),
                           ("Arrow",lambda:self._design_add_shape("arrow")),
                           ("Image",self._design_add_image)]:
@@ -2534,6 +2536,19 @@ class Studio(tk.Tk):
                 c.create_rectangle(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
             elif k=="ellipse":
                 c.create_oval(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
+            elif k=="triangle":
+                cx,cy=(x0+x1)//2,(y0+y1)//2
+                c.create_polygon(cx,y0,x1,y1,x0,y1,fill=fill,outline=stroke,width=sw)
+            elif k=="star":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(10):
+                    ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
+                    rr=ry if i%2==0 else ry*0.4
+                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
+                flat=[v for pt in pts for v in pt]
+                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
             elif k in ("line","arrow"):
                 c.create_line(x0,y0,x1,y1,fill=fill or "#000",width=sw,
                                arrow="last" if k=="arrow" else "none")
@@ -2694,6 +2709,17 @@ class Studio(tk.Tk):
             fill=obj.fill or None; stroke=obj.stroke or None; sw=obj.stroke_w; k=obj.kind
             if k=="rect":   d.rectangle([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
             elif k=="ellipse": d.ellipse([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
+            elif k=="triangle":
+                d.polygon([(x0+x1)//2,y0,x1,y1,x0,y1],fill=fill,outline=stroke,width=sw)
+            elif k=="star":
+                import math as _m
+                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=[]
+                for i in range(10):
+                    ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
+                    rr=ry if i%2==0 else ry*0.4
+                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
+                d.polygon(pts,fill=fill,outline=stroke,width=sw)
             elif k in ("line","arrow"): d.line([x0,y0,x1,y1],fill=fill or "#000",width=sw)
             elif k=="text":
                 try:
@@ -2724,6 +2750,19 @@ class Studio(tk.Tk):
             elif k=="ellipse":
                 cx,cy,rx,ry=x0+w//2,y0+h//2,w//2,h//2
                 lines.append(f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="triangle":
+                cx=x0+w//2
+                pts=f"{cx},{y0} {x1},{y1} {x0},{y1}"
+                lines.append(f'<polygon points="{pts}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="star":
+                import math as _m
+                cx,cy=x0+w/2,y0+h/2; rx,ry=w/2,h/2
+                pts=[]
+                for i in range(10):
+                    ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
+                    rr=ry if i%2==0 else ry*0.4
+                    pts.append(f"{cx+_m.cos(ang)*r},{cy+_m.sin(ang)*rr}")
+                lines.append(f'<polygon points="{" ".join(pts)}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
             elif k=="text":
                 wt="bold" if obj.font_bold else "normal"; sl="italic" if obj.font_it else "normal"
                 lines.append(f'<text x="{x0}" y="{y0+obj.font_sz}" font-family="{obj.font_fam}" font-size="{obj.font_sz}" font-weight="{wt}" font-style="{sl}" fill="{obj.text_color or "#000"}">{html.escape(obj.text or "")}</text>')
