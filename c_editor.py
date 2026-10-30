@@ -2817,6 +2817,48 @@ class Studio(tk.Tk):
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
                 return str(min(vals)) if vals else "0"
+            m=re.match(r"COUNTIF\(([A-Z]+)(\d+):([A-Z]+)(\d+),(.+)\)",expr)
+            if m:
+                vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
+                crit=m.group(5).strip().strip('"').strip("'")
+                try: c=float(crit)
+                except Exception: c=None
+                n=sum(1 for v in vals if (c is not None and v==c) or (c is None and str(v)==crit))
+                return str(n)
+            m=re.match(r"SUMIF\(([A-Z]+)(\d+):([A-Z]+)(\d+),(.+)\)",expr)
+            if m:
+                vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
+                crit=m.group(5).strip().strip('"').strip("'")
+                try: c=float(crit)
+                except Exception: c=None
+                return str(sum(v for v in vals if (c is not None and v==c) or (c is None and str(v)==crit)))
+            m=re.match(r"IF\((.+),(.+),(.+)\)",expr)
+            if m:
+                cond=m.group(1).strip(); tv=m.group(2).strip(); fv=m.group(3).strip()
+                try:
+                    # support simple comparisons like A1>5, B2<=3, 4>2
+                    mm=re.match(r"([A-Z]+)(\d+)\s*(>=|<=|==|!=|>|<)\s*(.+)",cond)
+                    if mm:
+                        _ci=0
+                        for _ch in mm.group(1).upper(): _ci=_ci*26+ord(_ch)-64
+                        _ci=_ci-1
+                        v=self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,_ci),{}).get("value","")
+                        try: left=float(v)
+                        except Exception: left=0.0
+                        try: right=float(mm.group(4))
+                        except Exception: right=0.0
+                        op=mm.group(3)
+                        ok={" >":left>right,">=":left>=right,"<":left<right,"<=":left<=right,"==":left==right,"!=":left!=right}.get(op,False)
+                    else:
+                        try: ok=float(cond)!=0
+                        except Exception: ok=bool(cond)
+                    def conv(x):
+                        x=x.strip()
+                        if x.startswith('"') and x.endswith('"'): return x.strip('"')
+                        try: return float(x)
+                        except Exception: return x
+                    return str(conv(tv) if ok else conv(fv))
+                except Exception: return "#ERR"
             safe=re.sub(r"[^0-9+\-*/()., ]","",expr)
             return str(eval(safe))  # noqa: S307
         except Exception: return "#ERR"
@@ -2879,7 +2921,8 @@ class Studio(tk.Tk):
         self._sheet_draw()
     def _sheet_formula_help(self):
         messagebox.showinfo(APP,"Formulas start with =\n""=SUM(A1:B5)\n=AVERAGE(A1:A10)\n=COUNT(A1:A10)\n"
-        "=MAX(A1:A10)\n=MIN(A1:A10)\n=2+3*4\n\nPress Enter to confirm.")
+        "=MAX(A1:A10)\n=MIN(A1:A10)\n=COUNTIF(A1:A10,5)\n=SUMIF(A1:A10,5)\n"
+         "=IF(A1>5,\"yes\",\"no\")\n=2+3*4\n\nPress Enter to confirm.")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  SLIDES  methods
