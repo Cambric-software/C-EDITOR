@@ -2823,6 +2823,42 @@ class Studio(tk.Tk):
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
                 return str(min(vals)) if vals else "0"
+            m=re.match(r"CONCATENATE\((.+)\)",expr)
+            if m:
+                args=[a.strip() for a in m.group(1).split(",")]
+                out=""
+                for a in args:
+                    mm=re.match(r"([A-Z]+)(\d+)",a)
+                    if mm:
+                        v=self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,self._col_index(mm.group(1))),{}).get("value","")
+                        out+=str(v)
+                    else:
+                        out+=a.strip('"').strip("'")
+                return out
+            m=re.match(r"LEN\((.+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                mm=re.match(r"([A-Z]+)(\d+)",a)
+                if mm:
+                    v=self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,self._col_index(mm.group(1))),{}).get("value","")
+                    return str(len(str(v)))
+                return str(len(a.strip('"').strip("'")))
+            m=re.match(r"UPPER\((.+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                mm=re.match(r"([A-Z]+)(\d+)",a)
+                if mm:
+                    v=self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,self._col_index(mm.group(1))),{}).get("value","")
+                    return str(v).upper()
+                return a.strip('"').strip("'").upper()
+            m=re.match(r"LOWER\((.+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                mm=re.match(r"([A-Z]+)(\d+)",a)
+                if mm:
+                    v=self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,self._col_index(mm.group(1))),{}).get("value","")
+                    return str(v).lower()
+                return a.strip('"').strip("'").lower()
             m=re.match(r"VLOOKUP\((.+),([A-Z]+)(\d+):([A-Z]+)(\d+),(\d+)\)",expr)
             if m:
                 key=m.group(1).strip().strip('"').strip("'")
@@ -2945,7 +2981,7 @@ class Studio(tk.Tk):
     def _sheet_formula_help(self):
         messagebox.showinfo(APP,"Formulas start with =\n""=SUM(A1:B5)\n=AVERAGE(A1:A10)\n=COUNT(A1:A10)\n"
         "=MAX(A1:A10)\n=MIN(A1:A10)\n=COUNTIF(A1:A10,5)\n=SUMIF(A1:A10,5)\n"
-         "=VLOOKUP(A1,A2:B10,2)\n=IF(A1>5,\"yes\",\"no\")\n=2+3*4\n\nPress Enter to confirm.")
+         "=VLOOKUP(A1,A2:B10,2)\n=IF(A1>5,\"yes\",\"no\")\n=CONCATENATE(A1,B1)\n=LEN(A1)\n=UPPER(A1)\n=2+3*4\n\nPress Enter to confirm.")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  SLIDES  methods
