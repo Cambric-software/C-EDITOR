@@ -1075,7 +1075,7 @@ class Studio(tk.Tk):
         ])
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
-            ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Checklist",self._checklist),
+            ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Footnote...",self._doc_footnote),("Checklist",self._checklist),
             ("Flashcard",self._flashcard),("Equation",self._equation),
             ("Answer lines…",self._answer_lines),
             ("Horizontal rule",lambda:self._insert("\n─────────────────────────────────\n")),
@@ -2377,6 +2377,29 @@ class Studio(tk.Tk):
                 out = out + "\n\n" + ("=" * 60) + "\n\n"
         self._insert(out)
         messagebox.showinfo(APP, "Merged " + str(len(rows)) + " record(s).")
+
+    def _doc_footnote(self):
+        txt = simpledialog.askstring(APP, "Footnote text:", parent=self)
+        if not txt: return
+        marker = str(getattr(self, "_footnote_counter", 0) + 1)
+        self._footnote_counter = getattr(self, "_footnote_counter", 0) + 1
+        a, b = self._selected()
+        pos = a if a else self.editor.index("insert")
+        self.editor.insert(pos, marker)
+        try:
+            self.editor.tag_add("sup", pos, pos + ("+" + str(len(marker)) + "c"))
+            self.editor.tag_configure("sup", font=("Segoe UI", 8), offset=6)
+        except Exception:
+            pass
+        end = self.editor.index("end-1c")
+        self.editor.insert(end, "\n" + marker + "  " + txt + "\n")
+        try:
+            self.editor.tag_add("footnote", end, end + ("+" + str(len(marker) + 2 + len(txt)) + "c"))
+            self.editor.tag_configure("footnote", font=("Segoe UI", 9), foreground="#64748B")
+        except Exception:
+            pass
+        self._dirt(); self._snapshot()
+        self.status.set("Footnote " + marker + " added.")
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
