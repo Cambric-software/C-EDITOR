@@ -953,6 +953,7 @@ class Studio(tk.Tk):
             _btn("✕ Del",self._slide_delete,"danger")
             _btn("↑",lambda:self._slide_move(-1))
             _btn("↓",lambda:self._slide_move(1))
+            _btn("Sorter",self._slide_sorter)
             _sep()
             _btn("▶ Present",self._present,"accent")
             _btn("📤 PPTX",self._slide_export_pptx)
@@ -3369,6 +3370,71 @@ class Studio(tk.Tk):
         if 0<=n<len(self._slides):
             self._slides[self._cur_slide],self._slides[n]=self._slides[n],self._slides[self._cur_slide]
             self._cur_slide=n; self._slide_redraw()
+
+    def _slide_sorter(self):
+        win = tk.Toplevel(self); win.title("Slide Sorter"); win.transient(self)
+        win.geometry("760x520")
+        outer = ttk.Frame(win); outer.pack(fill="both", expand=True, padx=8, pady=8)
+        canvas = tk.Canvas(outer, bg=self._bg, highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=self._bg)
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        def _on_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(win_id, width=canvas.winfo_width())
+        inner.bind("<Configure>", _on_configure)
+
+        def _refresh():
+            for w in inner.winfo_children():
+                w.destroy()
+            cols = 4
+            for i, slide in enumerate(self._slides):
+                card = tk.Frame(inner, bg="#1E293B", bd=1, relief="solid", width=160, height=110)
+                card.grid(row=i // cols, column=i % cols, padx=6, pady=6)
+                card.pack_propagate(False)
+                title = (slide.get("text", "") or "Slide").splitlines()[0] if slide.get("text", "").strip() else "Slide"
+                if len(title) > 18: title = title[:18] + "..."
+                bg = slide.get("background", "#1E2D40")
+                tk.Label(card, text=str(i+1), bg=bg, fg="#FFFFFF",
+                         font=("Segoe UI", 9, "bold"), anchor="nw").pack(anchor="nw", padx=6, pady=(4, 0))
+                tk.Label(card, text=title, bg=bg, fg="#CBD5E1",
+                         font=("Segoe UI", 9), anchor="nw", wraplength=148, justify="left").pack(anchor="nw", padx=6)
+                if i == self._cur_slide:
+                    card.configure(highlightbackground="#3B82F6", highlightthickness=2)
+                def _select(idx=i):
+                    self._cur_slide = idx
+                    self._slide_redraw()
+                    _refresh()
+                card.bind("<Button-1>", lambda e, idx=i: _select(idx))
+                bf = tk.Frame(card, bg=bg)
+                bf.pack(side="bottom", fill="x", padx=4, pady=2)
+                tk.Button(bf, text="Up", width=3, command=lambda idx=i: (_move(idx, -1), _refresh()),
+                          bg="#334155", fg="#FFF", relief="flat", font=("Segoe UI", 8)).pack(side="left", padx=2)
+                tk.Button(bf, text="Dn", width=3, command=lambda idx=i: (_move(idx, 1), _refresh()),
+                          bg="#334155", fg="#FFF", relief="flat", font=("Segoe UI", 8)).pack(side="left", padx=2)
+                tk.Button(bf, text="X", width=3, command=lambda idx=i: (_delete(idx), _refresh()),
+                          bg="#7F1D1D", fg="#FFF", relief="flat", font=("Segoe UI", 8)).pack(side="right", padx=2)
+
+        def _move(idx, d):
+            n = idx + d
+            if 0 <= n < len(self._slides):
+                self._slides[idx], self._slides[n] = self._slides[n], self._slides[idx]
+                self._cur_slide = n
+                self._slide_redraw()
+
+        def _delete(idx):
+            if len(self._slides) <= 1:
+                messagebox.showinfo(APP, "Need at least one slide.", parent=win)
+                return
+            self._slides.pop(idx)
+            self._cur_slide = min(idx, len(self._slides) - 1)
+            self._slide_redraw()
+
+        _refresh()
+        tk.Button(outer, text="Close", command=win.destroy).pack(pady=(8, 0))
 
     def _slide_text_changed(self,e=None):
         if self.slide_editor.edit_modified():
