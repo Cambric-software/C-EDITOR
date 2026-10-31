@@ -1602,7 +1602,8 @@ class Studio(tk.Tk):
         self._slide_layout=tk.StringVar(value="Title + Content")
         ttk.Combobox(lc,textvariable=self._slide_layout,width=18,
                      values=["Title + Content","Title only","Blank",
-                              "Two columns","Image + Text","Quote","Section header"],
+                              "Two columns","Image + Text","Quote","Section header",
+                              "Comparison","Title + Two content","Agenda"],
                      state="readonly").pack(side="left",padx=8)
         # theme color
         tk.Label(lc,text="Background:",bg="#0D1117",fg="#64748B",
@@ -3236,6 +3237,48 @@ class Studio(tk.Tk):
             c.create_text(int(cw*0.74),int(ch*0.55),
                            text="\n".join(second_body),fill="#CBD5E1",
                            font=("Segoe UI",body_sz),width=int(cw*0.42),justify="left")
+        elif layout=="Comparison":
+            c.create_text(cw//2,int(ch*0.12),text=title,fill="#FFFFFF",
+                           font=("Segoe UI",max(14,title_sz-6),"bold"),
+                           width=int(cw*0.88),justify="center")
+            c.create_rectangle(int(cw*0.06),int(ch*0.28),int(cw*0.47),int(ch*0.88),
+                               fill="#1E293B",outline=accent,width=1)
+            c.create_text(int(cw*0.265),int(ch*0.33),text="Option A",fill=accent,
+                           font=("Segoe UI",12,"bold"),anchor="n")
+            c.create_rectangle(int(cw*0.53),int(ch*0.28),int(cw*0.94),int(ch*0.88),
+                               fill="#1E293B",outline=accent,width=1)
+            c.create_text(int(cw*0.735),int(ch*0.33),text="Option B",fill=accent,
+                           font=("Segoe UI",12,"bold"),anchor="n")
+            if body.strip():
+                c.create_text(int(cw*0.265),int(ch*0.42),text=body,fill="#CBD5E1",
+                               font=("Segoe UI",body_sz),width=int(cw*0.38),justify="left",anchor="n")
+        elif layout=="Title + Two content":
+            c.create_text(cw//2,int(ch*0.12),text=title,fill="#FFFFFF",
+                           font=("Segoe UI",max(14,title_sz-6),"bold"),
+                           width=int(cw*0.88),justify="center")
+            c.create_line(int(cw*0.08),int(ch*0.26),int(cw*0.92),int(ch*0.26),
+                           fill=accent,width=2)
+            if body.strip():
+                lines2 = body_lines
+                half = len(lines2)//2
+                c.create_text(int(cw*0.28),int(ch*0.6),
+                               text="\n".join(lines2[:half+1]),fill="#CBD5E1",
+                               font=("Segoe UI",body_sz),width=int(cw*0.4),justify="left")
+                c.create_text(int(cw*0.72),int(ch*0.6),
+                               text="\n".join(lines2[half+1:]),fill="#CBD5E1",
+                               font=("Segoe UI",body_sz),width=int(cw*0.4),justify="left")
+        elif layout=="Agenda":
+            c.create_text(int(cw*0.1),int(ch*0.12),text=title,fill="#FFFFFF",
+                           font=("Segoe UI",title_sz,"bold"),anchor="nw")
+            c.create_line(int(cw*0.1),int(ch*0.28),int(cw*0.9),int(ch*0.28),
+                           fill=accent,width=2)
+            if body.strip():
+                y = int(ch*0.34)
+                for i, bl in enumerate(body_lines):
+                    if not bl.strip(): continue
+                    c.create_text(int(cw*0.12), y, text=f"{i+1}.  {bl}",
+                                  fill="#CBD5E1", font=("Segoe UI",body_sz), anchor="nw")
+                    y += int(body_sz*1.6)
         else:  # "Title + Content" and others
             # title in upper third
             title_y = int(ch*0.22)
