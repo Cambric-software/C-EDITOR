@@ -2781,6 +2781,88 @@ class Studio(tk.Tk):
             pg.objects=[o for o in pg.objects if o is not self._sel_obj]
             self._sel_obj=None; self._dc_redraw()
 
+    def _design_layers(self):
+        win = tk.Toplevel(self); win.title("Layers"); win.transient(self)
+        win.geometry("320x420")
+        outer = ttk.Frame(win); outer.pack(fill="both", expand=True, padx=8, pady=8)
+        lb = tk.Listbox(outer, bg=self._surface, fg=self._fg, font=("Segoe UI", 10),
+                        selectbackground="#3B82F6", selectforeground="#FFF", relief="flat", bd=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        lb.pack(side="left", fill="both", expand=True)
+
+        def _refresh():
+            lb.delete(0, "end")
+            pg = self._dp()
+            if not pg: return
+            for i, o in enumerate(pg.objects):
+                name = getattr(o, "kind", "?")
+                if getattr(o, "text", ""): name = f"{name}: {o.text[:20]}"
+                vis = "V" if getattr(o, "visible", True) else "H"
+                lb.insert("end", f"{i+1}. [{vis}] {name}")
+            if self._sel_obj is not None:
+                pg2 = self._dp()
+                if pg2:
+                    for i, o in enumerate(pg2.objects):
+                        if o is self._sel_obj:
+                            lb.selection_set(i); lb.see(i)
+
+        def _select(e=None):
+            s = lb.curselection()
+            if not s: return
+            pg = self._dp()
+            if pg and 0 <= s[0] < len(pg.objects):
+                self._sel_obj = pg.objects[s[0]]
+                self._dc_redraw()
+
+        def _toggle():
+            s = lb.curselection()
+            if not s: return
+            pg = self._dp()
+            if pg and 0 <= s[0] < len(pg.objects):
+                o = pg.objects[s[0]]
+                o.visible = not getattr(o, "visible", True)
+                self._dc_redraw(); _refresh()
+
+        def _up():
+            s = lb.curselection()
+            if not s or s[0] == 0: return
+            pg = self._dp()
+            if pg:
+                i = s[0]
+                pg.objects[i-1], pg.objects[i] = pg.objects[i], pg.objects[i-1]
+                self._dc_redraw(); _refresh()
+                lb.selection_set(i-1)
+
+        def _down():
+            s = lb.curselection()
+            pg = self._dp()
+            if not s or not pg or s[0] >= len(pg.objects)-1: return
+            i = s[0]
+            pg.objects[i], pg.objects[i+1] = pg.objects[i+1], pg.objects[i]
+            self._dc_redraw(); _refresh()
+            lb.selection_set(i+1)
+
+        def _del():
+            s = lb.curselection()
+            if not s: return
+            pg = self._dp()
+            if pg and 0 <= s[0] < len(pg.objects):
+                o = pg.objects[s[0]]
+                pg.objects = [x for x in pg.objects if x is not o]
+                if self._sel_obj is o: self._sel_obj = None
+                self._dc_redraw(); _refresh()
+
+        lb.bind("<<ListboxSelect>>", _select)
+        bf = tk.Frame(outer, bg=self._bg)
+        bf.pack(fill="x", pady=(6, 0))
+        for lbl, cmd in [("Up", _up), ("Down", _down), ("Toggle vis", _toggle), ("Delete", _del)]:
+            tk.Button(bf, text=lbl, command=cmd, bg="#334155", fg="#FFF",
+                      relief="flat", font=("Segoe UI", 9)).pack(side="left", padx=2)
+        _refresh()
+        tk.Button(outer, text="Close", command=win.destroy).pack(pady=(8, 0))
+
     def _design_reorder(self,d:int):
         if self._sel_obj is None: return
         pg=self._dp(); objs=pg.objects
