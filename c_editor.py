@@ -1075,7 +1075,7 @@ class Studio(tk.Tk):
         ])
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
-            ("Table…",self._table),("Checklist",self._checklist),
+            ("Table…",self._table),("Table of Contents",self._doc_toc),("Checklist",self._checklist),
             ("Flashcard",self._flashcard),("Equation",self._equation),
             ("Answer lines…",self._answer_lines),
             ("Horizontal rule",lambda:self._insert("\n─────────────────────────────────\n")),
@@ -2319,6 +2319,36 @@ class Studio(tk.Tk):
     def _answer_lines(self):
         n=simpledialog.askinteger(APP,"Number of answer lines",initialvalue=5,minvalue=1,maxvalue=30,parent=self)
         if n: self._insert("\n"+"".join("________________________________________________________________\n" for _ in range(n)))
+
+    def _doc_toc(self):
+        # Generate a table of contents from Heading 1/2/3 styles.
+        text = self.editor.get("1.0", "end-1c")
+        lines = text.splitlines()
+        entries = []
+        idx = "1.0"
+        for ln in lines:
+            if not ln.strip():
+                continue
+            pos = self.editor.search(ln.strip(), idx, stopindex="end")
+            if pos:
+                tags = self.editor.tag_names(pos)
+                level = None
+                for t in tags:
+                    if t == "style_Heading_1": level = 1
+                    elif t == "style_Heading_2": level = 2
+                    elif t == "style_Heading_3": level = 3
+                if level and ln.strip():
+                    entries.append((level, ln.strip()))
+                idx = pos + "+1c"
+        if not entries:
+            messagebox.showinfo(APP, "No headings found. Apply Heading 1/2/3 styles first.")
+            return
+        toc = "Table of Contents\n" + ("=" * 24) + "\n"
+        for level, title in entries:
+            indent = "  " * (level - 1)
+            toc = toc + indent + "- " + title + "\n"
+        toc = toc + "\n"
+        self._insert(toc)
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
