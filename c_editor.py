@@ -986,6 +986,8 @@ class Studio(tk.Tk):
             _btn("⎘ Dup track",self._video_duplicate_track)
             _btn("＋ Track",self._video_add_track)
             _btn("Split",self._video_split_clip)
+            _btn("Dup clip",self._video_duplicate_clip)
+            _btn("Trim",self._video_trim_clip)
             _btn("↑",lambda:self._video_move_clip(-1))
             _btn("↓",lambda:self._video_move_clip(1))
             _sep()
@@ -3656,6 +3658,38 @@ class Studio(tk.Tk):
         self._video_sel_clip = None
         self._video_refresh()
         self.status.set("Clip split.")
+
+    def _video_duplicate_clip(self):
+        tr = self._vid_track()
+        if not tr or self._video_sel_clip is None or self._video_sel_clip >= len(tr["clips"]):
+            messagebox.showinfo(APP, "Select a clip first.", parent=self)
+            return
+        import copy as _c
+        dup = _c.deepcopy(tr["clips"][self._video_sel_clip])
+        tr["clips"].insert(self._video_sel_clip + 1, dup)
+        self._video_sel_clip = self._video_sel_clip + 1
+        self._video_refresh()
+        self.status.set("Clip duplicated.")
+
+    def _video_trim_clip(self):
+        tr = self._vid_track()
+        if not tr or self._video_sel_clip is None or self._video_sel_clip >= len(tr["clips"]):
+            messagebox.showinfo(APP, "Select a clip first.", parent=self)
+            return
+        clip = tr["clips"][self._video_sel_clip]
+        try:
+            s = float(clip.get("start", 0)); e = float(clip.get("end", 0))
+        except Exception:
+            messagebox.showerror(APP, "Invalid clip timing.", parent=self); return
+        ns = simpledialog.askfloat(APP, "New start (s):", initialvalue=s, parent=self)
+        if ns is None: return
+        ne = simpledialog.askfloat(APP, "New end (s):", initialvalue=e, parent=self)
+        if ne is None: return
+        if not (ns < ne):
+            messagebox.showinfo(APP, "Start must be before end.", parent=self); return
+        clip["start"] = ns; clip["end"] = ne
+        self._video_apply_clip()
+        self.status.set("Clip trimmed.")
 
     def _video_move_clip(self,d:int):
         tr=self._vid_track()
