@@ -1075,7 +1075,7 @@ class Studio(tk.Tk):
         ])
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
-            ("Table…",self._table),("Table of Contents",self._doc_toc),("Checklist",self._checklist),
+            ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Checklist",self._checklist),
             ("Flashcard",self._flashcard),("Equation",self._equation),
             ("Answer lines…",self._answer_lines),
             ("Horizontal rule",lambda:self._insert("\n─────────────────────────────────\n")),
@@ -2349,6 +2349,33 @@ class Studio(tk.Tk):
             toc = toc + indent + "- " + title + "\n"
         toc = toc + "\n"
         self._insert(toc)
+
+    def _doc_mail_merge(self):
+        p = filedialog.askopenfilename(parent=self, filetypes=[("CSV", "*.csv")])
+        if not p: return
+        try:
+            import csv as _csv
+            with open(p, newline="", encoding="utf-8") as f:
+                rows = list(_csv.DictReader(f))
+        except Exception as e:
+            messagebox.showerror(APP, "Could not read CSV: " + str(e))
+            return
+        if not rows:
+            messagebox.showinfo(APP, "CSV is empty.")
+            return
+        template = self.editor.get("1.0", "end-1c")
+        out = ""
+        for i, row in enumerate(rows):
+            merged = template
+            for k, v in row.items():
+                val = str(v) if v is not None else ""
+                merged = merged.replace("{{" + k + "}}", val)
+                merged = merged.replace("<<" + k + ">>", val)
+            out = out + merged
+            if i < len(rows) - 1:
+                out = out + "\n\n" + ("=" * 60) + "\n\n"
+        self._insert(out)
+        messagebox.showinfo(APP, "Merged " + str(len(rows)) + " record(s).")
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
