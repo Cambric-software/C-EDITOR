@@ -1018,6 +1018,7 @@ class Studio(tk.Tk):
             _btn("📂 Open",self._anim_open)
             _btn("🎞 GIF",self._anim_export_gif)
             _btn("🖼 PNG seq",self._anim_export_png_seq)
+            _btn("MP4",self._anim_export_mp4)
             _sep()
             _label("FPS:")
             self._anim_fps_var=tk.IntVar(value=self._anim_project["fps"])
@@ -4226,6 +4227,31 @@ class Studio(tk.Tk):
             self.status.set(f"PNG sequence saved in {folder}")
             messagebox.showinfo("Done",f"{total} frames saved in:\n{folder}",parent=self)
         except Exception as exc: messagebox.showerror(APP,str(exc),parent=self)
+
+    def _anim_export_mp4(self):
+        import shutil as _sh
+        ff = _sh.which("ffmpeg")
+        if not ff:
+            messagebox.showinfo(APP, "MP4 export needs ffmpeg.\nInstall: winget install ffmpeg", parent=self); return
+        folder = filedialog.askdirectory(parent=self, title="Save frames + MP4 to folder")
+        if not folder: return
+        try:
+            from PIL import Image
+            total = self._anim_project["total_frames"]
+            fps = max(1, int(self._anim_project.get("fps", 12)))
+            import tempfile, os as _os
+            tmp = Path(tempfile.mkdtemp())
+            for i in range(total):
+                self._anim_render_frame(i).save(tmp / f"frame_{i+1:04d}.png")
+            out = Path(folder) / "animation.mp4"
+            import subprocess as _sp
+            _sp.run([ff, "-y", "-framerate", str(fps), "-i", str(tmp / "frame_%04d.png"),
+                     "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out)],
+                    check=True, capture_output=True)
+            self.status.set(f"MP4 exported: {out.name}")
+            messagebox.showinfo("Done", f"MP4 saved:\n{out}", parent=self)
+        except Exception as exc:
+            messagebox.showerror(APP, str(exc), parent=self)
 
     def _anim_save(self):
         p=filedialog.asksaveasfilename(parent=self,defaultextension=".has",
