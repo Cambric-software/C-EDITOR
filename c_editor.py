@@ -985,6 +985,7 @@ class Studio(tk.Tk):
             _btn("✕ Remove",self._video_remove_clip,"danger")
             _btn("⎘ Dup track",self._video_duplicate_track)
             _btn("＋ Track",self._video_add_track)
+            _btn("Split",self._video_split_clip)
             _btn("↑",lambda:self._video_move_clip(-1))
             _btn("↓",lambda:self._video_move_clip(1))
             _sep()
@@ -3633,6 +3634,28 @@ class Studio(tk.Tk):
         tr=self._vid_track()
         if tr and self._video_sel_clip is not None and self._video_sel_clip<len(tr["clips"]):
             tr["clips"].pop(self._video_sel_clip); self._video_sel_clip=None; self._video_refresh()
+
+    def _video_split_clip(self):
+        tr = self._vid_track()
+        if not tr or self._video_sel_clip is None or self._video_sel_clip >= len(tr["clips"]):
+            messagebox.showinfo(APP, "Select a clip first.", parent=self)
+            return
+        clip = tr["clips"][self._video_sel_clip]
+        t = simpledialog.askfloat(APP, "Split at (seconds):", initialvalue=clip.get("start", 0) + (clip.get("end", 0) - clip.get("start", 0)) / 2, parent=self)
+        if t is None: return
+        try:
+            s = float(clip.get("start", 0)); e = float(clip.get("end", 0))
+        except Exception:
+            messagebox.showerror(APP, "Invalid clip timing.", parent=self); return
+        if not (s < t < e):
+            messagebox.showinfo(APP, "Split point must be inside the clip.", parent=self); return
+        # split into two clips
+        c1 = dict(clip); c1["end"] = t
+        c2 = dict(clip); c2["start"] = t; c2["offset"] = clip.get("offset", 0) + (t - s)
+        tr["clips"][self._video_sel_clip:self._video_sel_clip+1] = [c1, c2]
+        self._video_sel_clip = None
+        self._video_refresh()
+        self.status.set("Clip split.")
 
     def _video_move_clip(self,d:int):
         tr=self._vid_track()
