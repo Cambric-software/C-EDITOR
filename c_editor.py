@@ -4359,25 +4359,129 @@ class Studio(tk.Tk):
         self.status.set(f"SRT exported: {Path(p).name}")
 
     def _video_render(self):
-        import shutil as _sh
+        import shutil as _sh, subprocess as _sp, tempfile as _tf
         ff=_sh.which("ffmpeg")
         if not ff:
             messagebox.showinfo("ffmpeg not found",
                 "Install ffmpeg:\nwinget install ffmpeg\n\nThen retry Render MP4.",parent=self); return
-        clips=[c for t in self._video_project["tracks"] if t["kind"]=="video" and not t.get("muted")
-                 for c in t["clips"] if Path(c.get("path","")).exists()]
+        fp=_sh.which("ffprobe")
+        tracks=[t for t in self._video_project["tracks"] if t["kind"]=="video" and not t.get("muted")]
+        clips=[c for t in tracks for c in t["clips"] if c.get("path") and Path(c["path"]).exists()]
         if not clips: messagebox.showinfo(APP,"Add video clips first.",parent=self); return
         out=filedialog.asksaveasfilename(parent=self,defaultextension=".mp4",filetypes=[("MP4","*.mp4")])
         if not out: return
-        manifest=Path(tempfile.gettempdir())/"studio_concat.txt"
-        manifest.write_text("\n".join(f"file '{c['path']}'" for c in clips),encoding="utf-8")
+        work=Path(_tf.mkdtemp(prefix="c_editor_render_"))
+        W,H,FPS=1280,720,30
+        image_ext={".png",".jpg",".jpeg",".webp",".bmp",".gif",".tif",".tiff"}
+        prog=tk.Toplevel(self); prog.title("Rendering video"); prog.transient(self)
+        prog.geometry("420x120"); prog.configure(bg=self._bg); prog.grab_set()
+        lbl=tk.Label(prog,text="Preparing clips...",bg=self._bg,fg=self._fg,
+                     font=("Segoe UI",10)); lbl.pack(pady=(18,8))
+        bar=ttk.Progressbar(prog,maximum=max(1,len(clips)),length=360); bar.pack(padx=24)
+        def step(i,msg):
+            lbl.configure(text=msg); bar["value"]=i; prog.update_idletasks(); prog.update()
+        def atempo_chain(sp):
+            parts=[]; rem=sp
+            while rem>2.0:
+                parts.append("atempo=2.0"); rem/=2.0
+            while rem<0.5:
+                parts.append("atempo=0.5"); rem/=0.5
+            if abs(rem-1.0)>0.001: parts.append(f"atempo={rem:.4f}")
+            return parts
+        def clip_filter(c, out_dur):
+            vf=["scale=%d:%d:force_original_aspect_ratio=decrease"%(W,H),
+                "pad=%d:%d:(ow-iw)/2:(oh-ih)/2"%(W,H),"setsar=1","fps=%d"%FPS]
+            sp=max(0.25,min(4.0,float(c.get("speed",1.0) or 1.0)))
+            if abs(sp-1.0)>0.001: vf.append("setpts=(PTS-STARTPTS)/%.4f"%sp)
+            flt=str(c.get("filter","None") or "None")
+            fmap={
+                "Grayscale":"hue=s=0",
+                "Sepia":"colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+                "Vignette":"vignette",
+                "Vintage":"curves=preset=vintage",
+                "Sharpen":"unsharp=5:5:1.0",
+                "Blur":"gblur=sigma=3",
+                "Brightness+":"eq=brightness=0.08",
+                "Contrast+":"eq=contrast=1.2",
+                "Cool":"colorbalance=bs=0.15",
+                "Warm":"colorbalance=rs=0.12:gs=0.03",
+            }
+            if flt in fmap: vf.append(fmap[flt])
+            cg=c.get("color_grading") or {}
+            br=float(cg.get("brightness",0) or 0)/100.0
+            ct=float(cg.get("contrast",0) or 0)/100.0
+            sa=float(cg.get("saturation",0) or 0)/100.0
+            hu=float(cg.get("hue",0) or 0)
+            tp=float(cg.get("temperature",0) or 0)/100.0
+            eq=[]
+            if br: eq.append("brightness=%.3f"%br)
+            if ct: eq.append("contrast=%.3f"%(1.0+ct))
+            if sa: eq.append("saturation=%.3f"%(1.0+sa))
+            if eq: vf.append("eq="+":".join(eq))
+            if hu: vf.append("hue=h=%.2f"%hu)
+            if tp: vf.append("colorbalance=rs=%.3f:bs=%.3f"%(max(0,tp),max(0,-tp)))
+            fi=max(0.0,float(c.get("fade_in",0) or 0))
+            fo=max(0.0,float(c.get("fade_out",0) or 0))
+            if fi>0: vf.append("fade=t=in:st=0:d=%.3f"%min(fi,out_dur))
+            if fo>0: vf.append("fade=t=out:st=%.3f:d=%.3f"%(max(0,out_dur-fo),min(fo,out_dur)))
+            af=[]
+            af.extend(atempo_chain(sp))
+            vol=max(0.0,float(c.get("volume",1.0) or 1.0))
+            if abs(vol-1.0)>0.001: af.append("volume=%.3f"%vol)
+            if fi>0: af.append("afade=t=in:st=0:d=%.3f"%min(fi,out_dur))
+            if fo>0: af.append("afade=t=out:st=%.3f:d=%.3f"%(max(0,out_dur-fo),min(fo,out_dur)))
+            return vf,af
         try:
-            import subprocess as _sp
+            segments=[]
+            for i,c in enumerate(clips,1):
+                path=Path(c["path"]); is_img=path.suffix.lower() in image_ext
+                try: s=float(c.get("start",0) or 0)
+                except Exception: s=0.0
+                try: e=float(c.get("end",0) or 0)
+                except Exception: e=0.0
+                if e<=s: e=s+(5.0 if is_img else 10.0)
+                raw=max(0.1,e-s)
+                sp=max(0.25,min(4.0,float(c.get("speed",1.0) or 1.0)))
+                out_dur=max(0.1,raw/sp)
+                has_audio=False
+                if fp and not is_img:
+                    try:
+                        r=_sp.run([fp,"-v","error","-select_streams","a","-show_entries","stream=index",
+                                   "-of","csv=p=0",str(path)],capture_output=True,text=True,timeout=20)
+                        has_audio=bool(r.stdout.strip())
+                    except Exception: has_audio=False
+                vf,af=clip_filter(c,out_dur)
+                seg=work/f"seg_{i:03d}.mp4"
+                cmd=[ff,"-y"]
+                if is_img:
+                    cmd += ["-loop","1","-t","%.3f"%out_dur,"-i",str(path)]
+                else:
+                    cmd += ["-ss","%.3f"%s,"-t","%.3f"%raw,"-i",str(path)]
+                if not has_audio:
+                    cmd += ["-f","lavfi","-t","%.3f"%out_dur,"-i","anullsrc=channel_layout=stereo:sample_rate=44100"]
+                cmd += ["-vf",",".join(vf),"-map","0:v:0"]
+                if has_audio and af: cmd += ["-af",",".join(af)]
+                cmd += ["-map","0:a:0" if has_audio else "1:a:0"]
+                cmd += ["-c:v","libx264","-preset","fast","-crf","22","-pix_fmt","yuv420p",
+                        "-c:a","aac","-b:a","160k","-ar","44100","-ac","2","-shortest",str(seg)]
+                step(i-1,f"Rendering clip {i} of {len(clips)}...")
+                _sp.run(cmd,check=True,capture_output=True)
+                segments.append(seg)
+            step(len(clips),"Joining clips...")
+            manifest=work/"concat.txt"
+            manifest.write_text("\n".join("file '%s'"%s.as_posix() for s in segments),encoding="utf-8")
             _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",out],
                     check=True,capture_output=True)
+            prog.destroy()
+            try:
+                import shutil as _sh2
+                _sh2.rmtree(work,ignore_errors=True)
+            except Exception: pass
             self.status.set(f"Rendered: {Path(out).name}")
-            messagebox.showinfo("Done",f"MP4 saved:\n{out}",parent=self)
+            messagebox.showinfo("Done",f"MP4 saved with speed, fades, filters and color grading:\n{out}",parent=self)
         except Exception as exc:
+            try: prog.destroy()
+            except Exception: pass
             messagebox.showerror("Render failed",str(exc),parent=self)
 
     def _video_save(self):
