@@ -982,6 +982,8 @@ class Studio(tk.Tk):
         elif dept=="slides":
             _btn("🎨 Themes",self._slide_theme_gallery)
             _btn("Master",self._slide_master_dialog)
+            _btn("Section",self._slide_section_dialog)
+            _btn("Sections",self._slide_jump_section)
             _btn("🖼 Image",self._slide_add_image)
             _btn("📺 Presenter",self._present_with_notes,"accent")
             _sep()
@@ -4281,14 +4283,16 @@ class Studio(tk.Tk):
     def _slide_refresh_list(self):
         self.slide_lb.delete(0,"end")
         for i,s in enumerate(self._slides):
-            title=(s["text"].splitlines()[0] or "Slide")[:28]
-            mark=" ◀" if i==self._cur_slide else ""
-            self.slide_lb.insert("end",f"  {i+1:02d}  {title}{mark}")
+            title=(s["text"].splitlines()[0] or "Slide")[:24]
+            mark=" *" if i==self._cur_slide else ""
+            sec=s.get("section","")
+            prefix=(f"[{sec[:10]}] " if sec else "")
+            self.slide_lb.insert("end",f"  {i+1:02d}  {prefix}{title}{mark}")
         if self._cur_slide<self.slide_lb.size():
             self.slide_lb.selection_set(self._cur_slide)
         if hasattr(self,"_slide_stat"):
             n=len(self._slides)
-            self._slide_stat.set(f"{n} slide{'s' if n!=1 else ''}  •  Slide {self._cur_slide+1}")
+            self._slide_stat.set(f"{n} slide{'s' if n!=1 else ''}  -  Slide {self._cur_slide+1}")
 
     def _slide_redraw(self):
         if not hasattr(self, 'slide_canvas'): return
@@ -4491,6 +4495,46 @@ class Studio(tk.Tk):
         tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white",
                   relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
 
+    def _slide_section_dialog(self):
+        if not self._slides: return
+        cur = self._slides[self._cur_slide].get("section", "")
+        name = simpledialog.askstring(APP, "Section name for this slide (blank clears):",
+                                      initialvalue=cur, parent=self)
+        if name is None: return
+        self._slides[self._cur_slide]["section"] = name.strip()
+        self._slide_refresh_list(); self._slide_redraw()
+        self.status.set("Section updated" if name.strip() else "Section cleared")
+
+    def _slide_sections(self):
+        seen = []
+        for i, s in enumerate(self._slides):
+            sec = s.get("section", "").strip()
+            if sec and sec not in seen:
+                seen.append(sec)
+        return seen
+
+    def _slide_jump_section(self):
+        secs = self._slide_sections()
+        if not secs:
+            messagebox.showinfo(APP, "No sections yet. Use Section to name one.", parent=self); return
+        win = tk.Toplevel(self); win.title("Jump to section"); win.transient(self)
+        win.geometry("320x320")
+        lb = tk.Listbox(win, bg=self._surface, fg=self._fg, font=("Segoe UI", 10),
+                        selectbackground="#3B82F6", selectforeground="#FFF")
+        lb.pack(fill="both", expand=True, padx=8, pady=8)
+        for sec in secs:
+            first = next(i for i, s in enumerate(self._slides) if s.get("section", "").strip() == sec)
+            lb.insert("end", f"{sec}  (slide {first+1})")
+        def go(e=None):
+            sel = lb.curselection()
+            if not sel: return
+            sec = secs[sel[0]]
+            idx = next(i for i, s in enumerate(self._slides) if s.get("section", "").strip() == sec)
+            self._cur_slide = idx; self._slide_redraw(); win.destroy()
+        lb.bind("<Double-Button-1>", go)
+        tk.Button(win, text="Go", command=go, bg="#315C8A", fg="white", relief="flat",
+                  font=("Segoe UI", 9, "bold"), pady=5).pack(pady=6)
+
     def _slide_add(self):
         s = self._empty_slide()
         if getattr(self, "_slide_master", None):
@@ -4542,6 +4586,9 @@ class Studio(tk.Tk):
                 bg = slide.get("background", "#1E2D40")
                 tk.Label(card, text=str(i+1), bg=bg, fg="#FFFFFF",
                          font=("Segoe UI", 9, "bold"), anchor="nw").pack(anchor="nw", padx=6, pady=(4, 0))
+                if slide.get("section", "").strip():
+                    tk.Label(card, text=slide["section"][:16], bg=bg, fg="#F59E0B",
+                             font=("Segoe UI", 7, "bold"), anchor="nw").pack(anchor="nw", padx=6)
                 tk.Label(card, text=title, bg=bg, fg="#CBD5E1",
                          font=("Segoe UI", 9), anchor="nw", wraplength=148, justify="left").pack(anchor="nw", padx=6)
                 if i == self._cur_slide:
