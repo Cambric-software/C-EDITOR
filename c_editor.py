@@ -5039,14 +5039,53 @@ class Studio(tk.Tk):
                 try: cs=float(cap.get("start",0) or 0); ce=float(cap.get("end",3) or 3)
                 except Exception: cs,ce=0.0,3.0
                 overlays.append(_drawtext(ti,txt,cs,ce,34,"h-110","white")); ti+=1
+            stage=work/"stage.mp4"
             if overlays:
                 _sp.run([ff,"-y","-i",str(joined),"-vf",",".join(overlays),
                          "-c:v","libx264","-preset","fast","-crf","22","-pix_fmt","yuv420p",
-                         "-c:a","copy","-movflags","+faststart",out],
+                         "-c:a","copy","-movflags","+faststart",str(stage)],
                         check=True,capture_output=True)
             else:
                 import shutil as _shc
-                _shc.copy2(joined,out)
+                _shc.copy2(joined,stage)
+            # mix audio tracks into the finished video
+            audio_clips=[c for t in self._video_project.get("tracks",[])
+                         if t.get("kind")=="audio" and not t.get("muted")
+                         for c in t.get("clips",[])
+                         if c.get("path") and Path(c["path"]).exists()]
+            if audio_clips:
+                step(len(clips),"Mixing audio track...")
+                cmd=[ff,"-y","-i",str(stage)]
+                for a in audio_clips: cmd += ["-i",str(a["path"])]
+                fc=["[0:a]volume=1.0[abase]"]
+                labels=["[abase]"]
+                for idx,a in enumerate(audio_clips, start=1):
+                    try: s0=float(a.get("start",0) or 0)
+                    except Exception: s0=0.0
+                    try: e0=float(a.get("end",0) or 0)
+                    except Exception: e0=0.0
+                    sp=max(0.25,min(4.0,float(a.get("speed",1.0) or 1.0)))
+                    parts=["asetpts=PTS-STARTPTS"]
+                    if e0>s0: parts.insert(0,"atrim=start=%.3f:end=%.3f"%(s0,e0))
+                    if abs(sp-1.0)>0.001: parts.extend(atempo_chain(sp))
+                    vol=max(0.0,float(a.get("volume",1.0) or 1.0))
+                    if abs(vol-1.0)>0.001: parts.append("volume=%.3f"%vol)
+                    try: off=float(a.get("offset",0) or 0)
+                    except Exception: off=0.0
+                    if off>0: parts.append("adelay=%d|%d"%(int(off*1000),int(off*1000)))
+                    fi=max(0.0,float(a.get("fade_in",0) or 0))
+                    fo=max(0.0,float(a.get("fade_out",0) or 0))
+                    if fi>0: parts.append("afade=t=in:st=0:d=%.3f"%fi)
+                    if fo>0 and e0>s0: parts.append("afade=t=out:st=%.3f:d=%.3f"%(max(0,(e0-s0)/sp-fo),fo))
+                    fc.append("[%d:a]"%idx+",".join(parts)+"[a%d]"%idx)
+                    labels.append("[a%d]"%idx)
+                fc.append("".join(labels)+"amix=inputs=%d:duration=first:dropout_transition=0[aout]"%len(labels))
+                cmd += ["-filter_complex",";".join(fc),"-map","0:v","-map","[aout]",
+                        "-c:v","copy","-c:a","aac","-b:a","192k","-movflags","+faststart",out]
+                _sp.run(cmd,check=True,capture_output=True)
+            else:
+                import shutil as _shc2
+                _shc2.copy2(stage,out)
             prog.destroy()
             try:
                 import shutil as _sh2
