@@ -942,6 +942,7 @@ class Studio(tk.Tk):
         elif dept=="spreadsheet":
             _btn("📊 Chart",self._sheet_chart)
             _btn("Pivot",self._sheet_pivot)
+            _btn("Filter rows",self._sheet_filter)
             _btn("Cond. format",self._sheet_cf_dialog)
             _btn("⇃ Auto-fill",self._sheet_auto_fill)
             _btn("↕ Sort",self._sheet_sort_column)
@@ -7703,6 +7704,44 @@ class Studio(tk.Tk):
         self._sheet_data.update(new_data)
         self._sheet_draw()
         self.status.set(f"Sorted column {self._sheet_key(0,col)[:-1]} {'↑' if asc else '↓'}")
+
+    def _sheet_filter(self):
+        col_letter = simpledialog.askstring(APP, "Filter column letter (e.g. A):",
+                                            initialvalue="A", parent=self)
+        if not col_letter: return
+        col = self._col_index(col_letter.strip())
+        op = simpledialog.askstring(APP, "Condition: =, <>, >, >=, <, <=, contains",
+                                    initialvalue="contains", parent=self)
+        if not op: return
+        op = op.strip().lower()
+        val = simpledialog.askstring(APP, "Filter value:", initialvalue="", parent=self)
+        if val is None: return
+        if op not in ("=","<>",">",">=","<","<=","contains"):
+            messagebox.showerror(APP, "Use =, <>, >, >=, <, <= or contains.", parent=self); return
+        max_r = max((int(re.sub(r"[A-Za-z]","",k) or 1)-1 for k in self._sheet_data), default=0)
+        max_c = max((self._col_index(re.sub(r"\d+","",k)) for k in self._sheet_data), default=0)
+        out = {}
+        dst_row = 0
+        for r in range(max_r+1):
+            raw = str(self._sheet_data.get(self._sheet_key(r,col),{}).get("value",""))
+            ok = (val.upper() in raw.upper()) if op == "contains" else self._crit_match(raw, op+val)
+            is_header = (r == 0)
+            if not (is_header or ok): continue
+            for c in range(max_c+1):
+                src = self._sheet_data.get(self._sheet_key(r,c))
+                if src is not None:
+                    out[self._sheet_key(dst_row,c)] = dict(src)
+            dst_row += 1
+        if dst_row <= 1:
+            messagebox.showinfo(APP, "No rows matched the filter.", parent=self); return
+        if not hasattr(self,"_sheet_tabs"):
+            self._sheet_tabs=[{"name":"Sheet 1","data":{}}]; self._sheet_tab_idx=0
+        self._sheet_tabs[self._sheet_tab_idx]["data"] = dict(self._sheet_data)
+        self._sheet_tabs.append({"name":f"Filter {len(self._sheet_tabs)}","data":out})
+        self._sheet_tab_idx = len(self._sheet_tabs)-1
+        self._sheet_data.clear(); self._sheet_data.update(out)
+        self._sheet_draw(); self._sheet_refresh_tabs()
+        self.status.set(f"Filtered rows: {dst_row-1}")
 
     def _sheet_pivot(self):
         rng = simpledialog.askstring(APP, "Pivot source range (e.g. A1:C100):",
