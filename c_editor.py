@@ -930,6 +930,9 @@ class Studio(tk.Tk):
             _btn("Down layer",lambda: self._design_reorder(1))
             _btn("Layers", self._design_layers)
             _btn("Lock", self._design_toggle_lock)
+            _btn("Rot L",lambda:self._design_rotate(-15))
+            _btn("Rot R",lambda:self._design_rotate(15))
+            _btn("Rotate",self._design_rotate_dialog)
             _btn("Group", self._design_group)
             _btn("Ungroup", self._design_ungroup)
             _sep()
@@ -1478,12 +1481,14 @@ class Studio(tk.Tk):
         self._dp_bold  =tk.BooleanVar(value=False)
         self._dp_italic=tk.BooleanVar(value=False)
         self._dp_tcol  =tk.StringVar(value="#FFFFFF")
+        self._dp_rot   =tk.DoubleVar(value=0.0)
 
         pf=tk.Frame(props,bg=self._bg); pf.pack(fill="x",padx=10)
         pf.columnconfigure(1,weight=1)
         for row,(lbl,var) in enumerate([
             ("Kind",self._dp_kind),("X",self._dp_x),("Y",self._dp_y),
             ("Width",self._dp_w),("Height",self._dp_h),("Opacity",self._dp_opac),
+            ("Rotation",self._dp_rot),
         ]):
             tk.Label(pf,text=lbl,bg=self._bg,fg=P["muted"],
                       font=("Segoe UI",8)).grid(row=row,column=0,sticky="w",pady=2)
@@ -1495,15 +1500,15 @@ class Studio(tk.Tk):
                     row=row,column=1,sticky="ew",pady=1)
 
         tk.Label(pf,text="Fill",bg=self._bg,fg=P["muted"],
-                  font=("Segoe UI",8)).grid(row=6,column=0,sticky="w",pady=2)
-        fr=tk.Frame(pf,bg=self._bg); fr.grid(row=6,column=1,sticky="ew")
+                  font=("Segoe UI",8)).grid(row=7,column=0,sticky="w",pady=2)
+        fr=tk.Frame(pf,bg=self._bg); fr.grid(row=7,column=1,sticky="ew")
         ttk.Entry(fr,textvariable=self._dp_fill,width=8).pack(side="left")
         ttk.Button(fr,text="…",width=2,command=self._dp_pick_fill).pack(side="left",padx=2)
 
         tk.Label(pf,text="Stroke",bg=self._bg,fg=P["muted"],
-                  font=("Segoe UI",8)).grid(row=7,column=0,sticky="w",pady=2)
+                  font=("Segoe UI",8)).grid(row=8,column=0,sticky="w",pady=2)
         ttk.Entry(pf,textvariable=self._dp_stroke,width=12).grid(
-            row=7,column=1,sticky="ew",pady=1)
+            row=8,column=1,sticky="ew",pady=1)
 
         ttk.Separator(props).pack(fill="x",padx=10,pady=6)
         tk.Label(props,text="Text",bg=self._bg,fg=self._fg,
@@ -2986,79 +2991,73 @@ class Studio(tk.Tk):
             else:
                 c.create_line(ox, oy+int(val*scale), ox+int(pw*scale), oy+int(val*scale),
                               fill="#F59E0B", dash=(4, 3), width=1)
+        import math as _m
         for obj in pg.objects:
             if not obj.opacity: continue
             x0=ox+int(obj.x*scale); y0=oy+int(obj.y*scale)
             x1=x0+int(obj.w*scale); y1=y0+int(obj.h*scale)
             fill=obj.fill or ""; stroke=obj.stroke or ""
             sw=max(1,int(obj.stroke_w*scale)); k=obj.kind
+            rot=float(getattr(obj,"rotation",0.0) or 0.0)
+            cx,cy=(x0+x1)/2.0,(y0+y1)/2.0
+            def rp(pts):
+                return self._rot_pts(pts, cx, cy, rot)
             if k=="rect":
-                c.create_rectangle(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
+                if rot:
+                    pts=rp([(x0,y0),(x1,y0),(x1,y1),(x0,y1)])
+                    c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
+                else:
+                    c.create_rectangle(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
             elif k=="roundrect":
-                pts=self._rounded_pts(x0,y0,x1,y1,min(28,(x1-x0)//4,(y1-y0)//4))
+                pts=rp(self._rounded_pts(x0,y0,x1,y1,min(28,(x1-x0)//4,(y1-y0)//4)))
                 c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw,smooth=True)
             elif k=="ellipse":
-                c.create_oval(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
+                if rot:
+                    pts=[(cx+_m.cos(_m.radians(i*7.5))*(x1-x0)/2.0,
+                          cy+_m.sin(_m.radians(i*7.5))*(y1-y0)/2.0) for i in range(48)]
+                    pts=rp(pts)
+                    c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
+                else:
+                    c.create_oval(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
             elif k=="triangle":
-                cx,cy=(x0+x1)//2,(y0+y1)//2
-                c.create_polygon(cx,y0,x1,y1,x0,y1,fill=fill,outline=stroke,width=sw)
+                pts=rp([((x0+x1)//2,y0),(x1,y1),(x0,y1)])
+                c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
             elif k=="star":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                rx,ry=(x1-x0)/2.0,(y1-y0)/2.0
                 pts=[]
                 for i in range(10):
                     ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
                     rr=ry if i%2==0 else ry*0.4
                     pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
-                flat=[v for pt in pts for v in pt]
-                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
-            elif k=="triangle":
-                cx,cy=(x0+x1)//2,(y0+y1)//2
-                c.create_polygon(cx,y0,x1,y1,x0,y1,fill=fill,outline=stroke,width=sw)
-            elif k=="star":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                pts=rp(pts)
+                c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
+            elif k in ("pentagon","hexagon"):
+                n=5 if k=="pentagon" else 6
+                rx,ry=(x1-x0)/2.0,(y1-y0)/2.0
                 pts=[]
-                for i in range(10):
-                    ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
-                    rr=ry if i%2==0 else ry*0.4
-                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
-                flat=[v for pt in pts for v in pt]
-                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
-            elif k=="pentagon":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
-                pts=[]
-                for i in range(5):
-                    ang=_m.radians(i*72-90)
+                for i in range(n):
+                    ang=_m.radians(i*360/n-90)
                     pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
-                flat=[v for pt in pts for v in pt]
-                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
-            elif k=="hexagon":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
-                pts=[]
-                for i in range(6):
-                    ang=_m.radians(i*60-90)
-                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
-                flat=[v for pt in pts for v in pt]
-                c.create_polygon(*flat,fill=fill,outline=stroke,width=sw)
+                pts=rp(pts)
+                c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
             elif k=="diamond":
-                cx,cy=(x0+x1)/2,(y0+y1)/2
-                c.create_polygon(cx,y0,x1,cy,cx,y1,x0,cy,fill=fill,outline=stroke,width=sw)
+                pts=rp([(cx,y0),(x1,cy),(cx,y1),(x0,cy)])
+                c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw)
             elif k in ("line","arrow"):
-                c.create_line(x0,y0,x1,y1,fill=fill or "#000",width=sw,
+                pts=rp([(x0,y0),(x1,y1)])
+                c.create_line(*pts[0],*pts[1],fill=fill or "#000",width=sw,
                                arrow="last" if k=="arrow" else "none")
             elif k=="text":
                 sz=max(6,int(obj.font_sz*scale))
                 wt="bold" if obj.font_bold else "normal"
                 sl="italic" if obj.font_it else "roman"
                 c.create_text(x0,y0,text=obj.text,fill=obj.text_color or "#000",
-                               font=(obj.font_fam,sz,wt,sl),anchor="nw")
+                               font=(obj.font_fam,sz,wt,sl),anchor="nw",
+                               angle=(-rot if rot else 0))
             elif k=="image":
                 try:
                     from PIL import Image,ImageTk
-                    im=Image.open(obj.image_path)
+                    im=Image.open(obj.image_path).convert("RGBA")
                     im=im.resize((max(1,int(obj.w*scale)),max(1,int(obj.h*scale))),Image.LANCZOS)
                     if getattr(obj,"fx_brightness",1.0)!=1.0 or getattr(obj,"fx_contrast",1.0)!=1.0:
                         from PIL import ImageEnhance
@@ -3067,8 +3066,13 @@ class Studio(tk.Tk):
                     if getattr(obj,"fx_blur",0.0)>0:
                         from PIL import ImageFilter
                         im=im.filter(ImageFilter.GaussianBlur(obj.fx_blur))
+                    if rot:
+                        im=im.rotate(-rot,expand=True,resample=Image.BICUBIC)
                     photo=ImageTk.PhotoImage(im); c._img_refs.append(photo)
-                    c.create_image(x0,y0,image=photo,anchor="nw")
+                    if rot:
+                        c.create_image(cx,cy,image=photo,anchor="center")
+                    else:
+                        c.create_image(x0,y0,image=photo,anchor="nw")
                 except Exception:
                     c.create_rectangle(x0,y0,x1,y1,fill="#DDD",outline="#AAA")
                     c.create_text((x0+x1)//2,(y0+y1)//2,text=Path(obj.image_path).name[:20],fill="#666")
@@ -3076,7 +3080,11 @@ class Studio(tk.Tk):
                 c.create_text(x0+4, y0+4, text="L", anchor="nw", font=("Segoe UI", 9, "bold"), fill="#F59E0B")
             if self._is_selected(obj):
                 col = "#F59E0B" if obj is self._sel_obj else "#38BDF8"
-                c.create_rectangle(x0-3,y0-3,x1+3,y1+3,outline=col,width=2,dash=(5,3))
+                if rot:
+                    pts=self._rot_pts([(x0-3,y0-3),(x1+3,y0-3),(x1+3,y1+3),(x0-3,y1+3)],cx,cy,rot)
+                    c.create_polygon(*[v for p in pts for v in p],fill="",outline=col,width=2,dash=(5,3))
+                else:
+                    c.create_rectangle(x0-3,y0-3,x1+3,y1+3,outline=col,width=2,dash=(5,3))
                 if obj is self._sel_obj:
                     c.create_rectangle(x1-5,y1-5,x1+5,y1+5,fill=col,outline="")
 
@@ -3164,6 +3172,7 @@ class Studio(tk.Tk):
         self._dp_text.set(obj.text or ""); self._dp_fsize.set(obj.font_sz)
         self._dp_bold.set(obj.font_bold); self._dp_italic.set(obj.font_it)
         self._dp_tcol.set(obj.text_color or "#000000")
+        self._dp_rot.set(round(getattr(obj,"rotation",0.0) or 0.0, 1))
 
     def _dp_apply(self):
         obj=self._sel_obj
@@ -3174,7 +3183,8 @@ class Studio(tk.Tk):
         obj.opacity=max(0,min(1,self._dp_opac.get()))
         obj.text=self._dp_text.get(); obj.font_sz=self._dp_fsize.get()
         obj.font_bold=self._dp_bold.get(); obj.font_it=self._dp_italic.get()
-        obj.text_color=self._dp_tcol.get(); self._dc_redraw()
+        obj.text_color=self._dp_tcol.get()
+        obj.rotation=float(self._dp_rot.get() or 0.0); self._dc_redraw()
 
     def _dp_pick_fill(self):
         c=colorchooser.askcolor(self._dp_fill.get() or "#315C8A",parent=self)[1]
@@ -3192,6 +3202,17 @@ class Studio(tk.Tk):
         obj=DesignObject(kind="text",x=100,y=100,w=300,h=70,fill="",text=t,
                           text_color="#1E293B",font_sz=32,font_bold=True)
         pg.objects.append(obj); self._sel_obj=obj; self._dc_redraw()
+
+    def _rot_pt(self, px, py, cx, cy, deg):
+        import math as _m
+        a = _m.radians(deg)
+        dx, dy = px - cx, py - cy
+        return (cx + dx*_m.cos(a) - dy*_m.sin(a),
+                cy + dx*_m.sin(a) + dy*_m.cos(a))
+
+    def _rot_pts(self, pts, cx, cy, deg):
+        if not deg: return pts
+        return [self._rot_pt(px, py, cx, cy, deg) for px, py in pts]
 
     def _rounded_pts(self,x0,y0,x1,y1,r):
         r=max(0,min(r,(x1-x0)//2,(y1-y0)//2))
@@ -3425,6 +3446,25 @@ class Studio(tk.Tk):
         _refresh()
         tk.Button(outer, text="Close", command=win.destroy).pack(pady=(8, 0))
 
+    def _design_rotate(self, delta: float):
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        for o in src:
+            o.rotation=((float(getattr(o,"rotation",0.0) or 0.0)+delta)+180)%360-180
+        if self._sel_obj: self._dp_rot.set(round(self._sel_obj.rotation,1))
+        self._dc_redraw(); self.status.set(f"Rotated {len(src)} object(s)")
+
+    def _design_rotate_dialog(self):
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src:
+            messagebox.showinfo(APP,"Select an object first.",parent=self); return
+        cur=float(getattr(src[0],"rotation",0.0) or 0.0)
+        deg=simpledialog.askfloat(APP,"Rotation in degrees:",initialvalue=cur,parent=self)
+        if deg is None: return
+        for o in src: o.rotation=float(deg)
+        if self._sel_obj: self._dp_rot.set(round(self._sel_obj.rotation,1))
+        self._dc_redraw(); self.status.set("Rotation applied")
+
     def _design_toggle_lock(self):
         src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
         if not src: return
@@ -3520,54 +3560,85 @@ class Studio(tk.Tk):
         if not p: return
         pw=self.design_proj.width; ph=self.design_proj.height
         im=Image.new("RGB",(pw,ph),pg.background); d=PD.Draw(im)
+        import math as _m
         for obj in pg.objects:
             x0,y0=int(obj.x),int(obj.y); x1,y1=x0+int(obj.w),y0+int(obj.h)
             fill=obj.fill or None; stroke=obj.stroke or None; sw=obj.stroke_w; k=obj.kind
-            if k=="rect":   d.rectangle([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
+            rot=float(getattr(obj,"rotation",0.0) or 0.0)
+            cx,cy=(x0+x1)/2.0,(y0+y1)/2.0
+            def rp(pts):
+                return self._rot_pts(pts, cx, cy, rot)
+            if k=="rect":
+                if rot:
+                    d.polygon(rp([(x0,y0),(x1,y0),(x1,y1),(x0,y1)]),fill=fill,outline=stroke,width=sw)
+                else:
+                    d.rectangle([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
             elif k=="roundrect":
                 rr=min(28,max(0,(x1-x0)//4),max(0,(y1-y0)//4))
-                d.rounded_rectangle([x0,y0,x1,y1],radius=rr,fill=fill,outline=stroke,width=sw)
-            elif k=="ellipse": d.ellipse([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
+                if rot:
+                    pts=[]
+                    r=rr
+                    pts += [(x0+r,y0),(x1-r,y0)]
+                    pts += [(x1-_m.cos(_m.radians(a))*r, y0+r-_m.sin(_m.radians(a))*r) for a in range(0,91,15)]
+                    pts += [(x1,y0+r),(x1,y1-r)]
+                    pts += [(x1-r+_m.cos(_m.radians(a))*r, y1-r+_m.sin(_m.radians(a))*r) for a in range(0,91,15)]
+                    pts += [(x1-r,y1),(x0+r,y1)]
+                    pts += [(x0+r-_m.cos(_m.radians(a))*r, y1-r+_m.sin(_m.radians(a))*r) for a in range(0,91,15)]
+                    pts += [(x0,y1-r),(x0,y0+r)]
+                    pts += [(x0+r-_m.cos(_m.radians(a))*r, y0+r-_m.sin(_m.radians(a))*r) for a in range(0,91,15)]
+                    d.polygon(rp(pts),fill=fill,outline=stroke,width=sw)
+                else:
+                    d.rounded_rectangle([x0,y0,x1,y1],radius=rr,fill=fill,outline=stroke,width=sw)
+            elif k=="ellipse":
+                if rot:
+                    pts=[(cx+_m.cos(_m.radians(i*7.5))*(x1-x0)/2.0,
+                          cy+_m.sin(_m.radians(i*7.5))*(y1-y0)/2.0) for i in range(48)]
+                    d.polygon(rp(pts),fill=fill,outline=stroke,width=sw)
+                else:
+                    d.ellipse([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
             elif k=="triangle":
-                d.polygon([(x0+x1)//2,y0,x1,y1,x0,y1],fill=fill,outline=stroke,width=sw)
+                d.polygon(rp([((x0+x1)//2,y0),(x1,y1),(x0,y1)]),fill=fill,outline=stroke,width=sw)
             elif k=="star":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                rx,ry=(x1-x0)/2.0,(y1-y0)/2.0
                 pts=[]
                 for i in range(10):
                     ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.4
-                    rr=ry if i%2==0 else ry*0.4
-                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr))
-                d.polygon(pts,fill=fill,outline=stroke,width=sw)
-            elif k=="pentagon":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
+                    rr2=ry if i%2==0 else ry*0.4
+                    pts.append((cx+_m.cos(ang)*r, cy+_m.sin(ang)*rr2))
+                d.polygon(rp(pts),fill=fill,outline=stroke,width=sw)
+            elif k in ("pentagon","hexagon"):
+                n=5 if k=="pentagon" else 6
+                rx,ry=(x1-x0)/2.0,(y1-y0)/2.0
                 pts=[]
-                for i in range(5):
-                    ang=_m.radians(i*72-90)
+                for i in range(n):
+                    ang=_m.radians(i*360/n-90)
                     pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
-                d.polygon(pts,fill=fill,outline=stroke,width=sw)
-            elif k=="hexagon":
-                import math as _m
-                cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=(x1-x0)/2,(y1-y0)/2
-                pts=[]
-                for i in range(6):
-                    ang=_m.radians(i*60-90)
-                    pts.append((cx+_m.cos(ang)*rx, cy+_m.sin(ang)*ry))
-                d.polygon(pts,fill=fill,outline=stroke,width=sw)
+                d.polygon(rp(pts),fill=fill,outline=stroke,width=sw)
             elif k=="diamond":
-                cx,cy=(x0+x1)//2,(y0+y1)//2
-                d.polygon([(cx,y0),(x1,cy),(cx,y1),(x0,cy)],fill=fill,outline=stroke,width=sw)
-            elif k in ("line","arrow"): d.line([x0,y0,x1,y1],fill=fill or "#000",width=sw)
+                d.polygon(rp([(cx,y0),(x1,cy),(cx,y1),(x0,cy)]),fill=fill,outline=stroke,width=sw)
+            elif k in ("line","arrow"):
+                pts=rp([(x0,y0),(x1,y1)])
+                d.line([pts[0],pts[1]],fill=fill or "#000",width=sw)
             elif k=="text":
                 try:
                     fnt=ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf" if obj.font_bold else "C:/Windows/Fonts/segoeui.ttf",max(8,obj.font_sz))
                 except Exception:
                     fnt=ImageFont.load_default()
-                d.text((x0,y0),obj.text or "",fill=obj.text_color or "#000",font=fnt)
+                if rot:
+                    try:
+                        box=d.textbbox((0,0),obj.text or "",font=fnt)
+                        tw=max(1,box[2]-box[0]+20); th=max(1,box[3]-box[1]+20)
+                    except Exception:
+                        tw,th=max(1,int(obj.w)),max(1,int(obj.h))
+                    tmp=Image.new("RGBA",(tw,th),(0,0,0,0))
+                    PD.Draw(tmp).text((10,10),obj.text or "",fill=obj.text_color or "#000",font=fnt)
+                    tmp=tmp.rotate(-rot,expand=True,resample=Image.BICUBIC)
+                    im.paste(tmp,(int(cx-tmp.width/2),int(cy-tmp.height/2)),tmp)
+                else:
+                    d.text((x0,y0),obj.text or "",fill=obj.text_color or "#000",font=fnt)
             elif k=="image":
                 try:
-                    src=Image.open(obj.image_path).resize((max(1,int(obj.w)),max(1,int(obj.h))),Image.LANCZOS)
+                    src=Image.open(obj.image_path).convert("RGBA").resize((max(1,int(obj.w)),max(1,int(obj.h))),Image.LANCZOS)
                     if getattr(obj,"fx_brightness",1.0)!=1.0 or getattr(obj,"fx_contrast",1.0)!=1.0:
                         from PIL import ImageEnhance
                         src=ImageEnhance.Brightness(src).enhance(max(0,obj.fx_brightness))
@@ -3575,7 +3646,11 @@ class Studio(tk.Tk):
                     if getattr(obj,"fx_blur",0.0)>0:
                         from PIL import ImageFilter
                         src=src.filter(ImageFilter.GaussianBlur(obj.fx_blur))
-                    im.paste(src,(x0,y0))
+                    if rot:
+                        src=src.rotate(-rot,expand=True,resample=Image.BICUBIC)
+                        im.paste(src,(int(cx-src.width/2),int(cy-src.height/2)),src)
+                    else:
+                        im.paste(src,(x0,y0),src)
                 except Exception: pass
         im.save(p); self.status.set(f"Design exported: {Path(p).name}")
 
@@ -3591,6 +3666,8 @@ class Studio(tk.Tk):
             x0,y0,w,h=int(obj.x),int(obj.y),int(obj.w),int(obj.h)
             x1,y1=x0+w,y0+h
             fill=obj.fill or "none"; stroke=obj.stroke or "none"; k=obj.kind
+            rot=float(getattr(obj,"rotation",0.0) or 0.0)
+            _group_start=len(lines)
             if k=="rect":
                 lines.append(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
             elif k=="roundrect":
@@ -3640,6 +3717,9 @@ class Studio(tk.Tk):
             elif k=="text":
                 wt="bold" if obj.font_bold else "normal"; sl="italic" if obj.font_it else "normal"
                 lines.append(f'<text x="{x0}" y="{y0+obj.font_sz}" font-family="{obj.font_fam}" font-size="{obj.font_sz}" font-weight="{wt}" font-style="{sl}" fill="{obj.text_color or "#000"}">{html.escape(obj.text or "")}</text>')
+            if rot:
+                lines.insert(_group_start, f'<g transform="rotate({rot} {x0+w/2} {y0+h/2})">')
+                lines.append("</g>")
         lines.append("</svg>")
         Path(p).write_text("\n".join(lines),encoding="utf-8"); self.status.set(f"SVG exported: {Path(p).name}")
 
