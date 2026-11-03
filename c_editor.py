@@ -888,6 +888,8 @@ class Studio(tk.Tk):
             _btn("ء Diacritics",self._diacritics)
             _sep()
             _btn("✨ AI",self._ai_assistant,"accent")
+            _btn("Present", self._present)
+            _btn("Transition", self._animation_settings)
 
         elif dept=="design":
             _btn("New",self._design_new)
@@ -980,7 +982,7 @@ class Studio(tk.Tk):
             _sep()
             _label("Transition:")
             self._slide_trans_var=tk.StringVar(value="Fade")
-            _combo(self._slide_trans_var,["None","Fade","Slide","Zoom","Wipe","Dissolve"],10)
+            _combo(self._slide_trans_var,["None","Fade","Quick fade","Slide","Zoom","Wipe","Dissolve","Typewriter"],10)
             _sep()
             _label("BG:")
             self._slide_theme=tk.StringVar(value="#1E2D40")
@@ -5752,19 +5754,21 @@ class Studio(tk.Tk):
         tab = self._dept_nb.index("current")
         if tab == 3:
             slides   = self._slides
-            get_text = lambda s: s["text"]
+            get_text = lambda s: s.get("text", "")
             get_bg   = lambda s: s.get("background", "#1E2D40")
+            get_tr   = lambda s: s.get("transition", "Fade")
         else:
             slides   = self.doc.pages
             get_text = lambda p: p.text
             get_bg   = lambda p: "#1E2D40"
+            get_tr   = lambda p: self.doc.metadata.get("transition", "Fade")
         if not slides:
             return
         win = tk.Toplevel(self)
-        win.title(self.doc.title + " — Presentation")
+        win.title(self.doc.title + " - Presentation")
         win.configure(bg="black")
         win.attributes("-fullscreen", True)
-        idx = {"v": 0}
+        state = {"idx": 0, "anim": None, "typing": None}
 
         label = tk.Label(
             win, bg="#1E2D40", fg="white",
@@ -5781,15 +5785,76 @@ class Studio(tk.Tk):
             "Space = auto-play    Esc = exit"))
         note.pack(pady=10)
 
+        def fg_for(bg):
+            try:
+                r=int(bg[1:3],16); g=int(bg[3:5],16); b=int(bg[5:7],16)
+                return "#0F172A" if (0.299*r+0.587*g+0.114*b)>150 else "#FFFFFF"
+            except Exception:
+                return "#FFFFFF"
+
+        def blend(c1,c2,t):
+            try:
+                a=[int(c1[i:i+2],16) for i in (1,3,5)]
+                b=[int(c2[i:i+2],16) for i in (1,3,5)]
+                return "#"+"".join(f"{int(a[i]+(b[i]-a[i])*t):02X}" for i in range(3))
+            except Exception:
+                return c2
+
+        def cancel():
+            if state["anim"]:
+                try: win.after_cancel(state["anim"])
+                except Exception: pass
+                state["anim"]=None
+            if state["typing"]:
+                try: win.after_cancel(state["typing"])
+                except Exception: pass
+                state["typing"]=None
+
+        def animate(s):
+            cancel()
+            text=get_text(s); bg=get_bg(s); fg=fg_for(bg)
+            kind=get_tr(s)
+            label.pack_configure(padx=70,pady=60)
+            label.configure(text=text,bg=bg,fg=fg,font=("Segoe UI",24))
+            if kind in ("Fade","Dissolve","Quick fade"):
+                dur=160 if kind=="Quick fade" else 380
+                steps=14
+                def step(i=0):
+                    if i>steps: return
+                    label.configure(fg=blend(bg,fg,i/steps))
+                    state["anim"]=win.after(max(8,dur//steps),lambda:step(i+1))
+                step(0)
+            elif kind=="Slide":
+                label.pack_configure(padx=480)
+                def step(i=0):
+                    if i>16: label.pack_configure(padx=70); return
+                    label.pack_configure(padx=int(480-(410*i/16)))
+                    state["anim"]=win.after(16,lambda:step(i+1))
+                step(0)
+            elif kind=="Zoom":
+                def step(i=0):
+                    sz=8+i
+                    label.configure(font=("Segoe UI",sz))
+                    if sz<24: state["anim"]=win.after(14,lambda:step(i+1))
+                step(0)
+            elif kind=="Typewriter":
+                label.configure(text="")
+                n=len(text); chunk=max(1,n//260)
+                def type_step(i=0):
+                    label.configure(text=text[:i])
+                    if i<n:
+                        state["typing"]=win.after(12,lambda:type_step(min(n,i+chunk)))
+                type_step(0)
+            else:
+                label.configure(text=text)
+
         auto = {"id": None}
 
         def show(d=0):
-            idx["v"] = (idx["v"] + d) % len(slides)
-            s = slides[idx["v"]]
-            label.configure(text=get_text(s), bg=get_bg(s))
-            win.title(
-                f"{self.doc.title} "
-                f"— {idx['v']+1}/{len(slides)}")
+            state["idx"] = (state["idx"] + d) % len(slides)
+            s = slides[state["idx"]]
+            animate(s)
+            win.title(f"{self.doc.title} - {state['idx']+1}/{len(slides)}")
 
         def autoplay(event=None):
             if auto["id"]:
@@ -5797,20 +5862,16 @@ class Studio(tk.Tk):
                 auto["id"] = None
                 note.configure(text="Auto-play stopped")
             else:
-                ms = max(1, int(
-                    self.preferences.get(
-                    "presentation_seconds", 4))) * 1000
+                ms = max(1, int(self.preferences.get("presentation_seconds", 4))) * 1000
                 def tick():
                     show(1)
                     auto["id"] = win.after(ms, tick)
                 auto["id"] = win.after(ms, tick)
-                note.configure(
-                    text=(f"Auto-play every {ms//1000}s "
-                          f"— Space to stop"))
+                note.configure(text=f"Auto-play every {ms//1000}s - Space to stop")
 
         win.bind("<Right>",  lambda e: show(1))
         win.bind("<Left>",   lambda e: show(-1))
-        win.bind("<Escape>", lambda e: win.destroy())
+        win.bind("<Escape>", lambda e: (cancel(), win.destroy()))
         win.bind("<space>",  autoplay)
         show()
 
