@@ -936,6 +936,7 @@ class Studio(tk.Tk):
 
         elif dept=="spreadsheet":
             _btn("📊 Chart",self._sheet_chart)
+            _btn("Cond. format",self._sheet_cf_dialog)
             _btn("⇃ Auto-fill",self._sheet_auto_fill)
             _btn("↕ Sort",self._sheet_sort_column)
             _btn("🔍 Find",self._sheet_find_replace)
@@ -3380,6 +3381,10 @@ class Studio(tk.Tk):
             for col in range(cols):
                 x=HDR+col*CW; key=self._sheet_key(row,col)
                 cell=self._sheet_data.get(key,{}); bg=cell.get("bg","#FFFFFF")
+                fg_override=None
+                for rule in self._sheet_cf_rules():
+                    if self._cf_in_range(key, rule.get("range","")) and self._cf_match(cell.get("value",""), rule):
+                        bg=rule.get("fill","#FEF3C7"); fg_override=rule.get("fg","#92400E"); break
                 is_sel=(row==sr and col==sc)
                 if is_sel: bg="#DBEAFE"
                 c.create_rectangle(x,y,x+CW,y+RH,fill=bg,
@@ -3389,7 +3394,7 @@ class Studio(tk.Tk):
                 if val:
                     fw="bold" if cell.get("bold") else "normal"
                     c.create_text(x+4,y+RH//2,text=val[:18],anchor="w",
-                                   font=("Segoe UI",9,fw),fill=cell.get("fg","#1E293B"))
+                                   font=("Segoe UI",9,fw),fill=fg_override or cell.get("fg","#1E293B"))
 
     def _sheet_click(self,e):
         HDR=self._HDR; CW=self._COL_W; RH=self._ROW_H
@@ -3698,6 +3703,83 @@ class Studio(tk.Tk):
                 try: vals.append(float(v))
                 except Exception: pass
         return vals
+
+    def _sheet_cf_rules(self):
+        if not hasattr(self, "_sheet_tabs") or not self._sheet_tabs:
+            return []
+        idx = getattr(self, "_sheet_tab_idx", 0)
+        return self._sheet_tabs[idx].setdefault("rules", [])
+
+    def _cf_in_range(self, key, rng):
+        m = re.match(r"([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)$", str(rng).strip())
+        if not m: return False
+        c1 = self._col_index(m.group(1)); r1 = int(m.group(2))-1
+        c2 = self._col_index(m.group(3)); r2 = int(m.group(4))-1
+        km = re.match(r"([A-Za-z]+)(\d+)$", key)
+        if not km: return False
+        kc = self._col_index(km.group(1)); kr = int(km.group(2))-1
+        return min(c1,c2) <= kc <= max(c1,c2) and min(r1,r2) <= kr <= max(r1,r2)
+
+    def _cf_match(self, value, rule):
+        op = rule.get("op", ">")
+        rhs = str(rule.get("value", ""))
+        if op == "contains":
+            return rhs.upper() in str(value).upper()
+        return self._crit_match(value, op + rhs)
+
+    def _sheet_cf_dialog(self):
+        win = tk.Toplevel(self); win.title("Conditional formatting"); win.transient(self)
+        win.geometry("390x330"); win.configure(bg=self._bg)
+        tk.Label(win, text="Highlight cells that match a rule", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(14, 8))
+        row = tk.Frame(win, bg=self._bg); row.pack(fill="x", padx=14, pady=3)
+        tk.Label(row, text="Range", width=10, anchor="w", bg=self._bg, fg=self._fg).pack(side="left")
+        range_v = tk.StringVar(value="A1:B10")
+        ttk.Entry(row, textvariable=range_v, width=20).pack(side="left")
+        row2 = tk.Frame(win, bg=self._bg); row2.pack(fill="x", padx=14, pady=3)
+        tk.Label(row2, text="Condition", width=10, anchor="w", bg=self._bg, fg=self._fg).pack(side="left")
+        op_v = tk.StringVar(value=">")
+        ttk.Combobox(row2, textvariable=op_v, values=[">", ">=", "<", "<=", "=", "<>", "contains"],
+                     state="readonly", width=8).pack(side="left")
+        val_v = tk.StringVar(value="0")
+        ttk.Entry(row2, textvariable=val_v, width=12).pack(side="left", padx=6)
+        row3 = tk.Frame(win, bg=self._bg); row3.pack(fill="x", padx=14, pady=3)
+        tk.Label(row3, text="Fill", width=10, anchor="w", bg=self._bg, fg=self._fg).pack(side="left")
+        fill_v = tk.StringVar(value="#FEF3C7")
+        fill_btn = tk.Button(row3, text="      ", bg=fill_v.get(), relief="flat", width=5)
+        fill_btn.pack(side="left")
+        tk.Label(row3, text="Text", bg=self._bg, fg=self._fg).pack(side="left", padx=(14, 4))
+        fg_v = tk.StringVar(value="#92400E")
+        fg_btn = tk.Button(row3, text="      ", bg=fg_v.get(), relief="flat", width=5)
+        fg_btn.pack(side="left")
+        def pick_fill():
+            c = colorchooser.askcolor(fill_v.get(), parent=win)[1]
+            if c: fill_v.set(c); fill_btn.configure(bg=c)
+        def pick_fg():
+            c = colorchooser.askcolor(fg_v.get(), parent=win)[1]
+            if c: fg_v.set(c); fg_btn.configure(bg=c)
+        fill_btn.configure(command=pick_fill); fg_btn.configure(command=pick_fg)
+        info = tk.Label(win, text="Rules apply to the current sheet.", bg=self._bg,
+                        fg=PALETTE["muted"], font=("Segoe UI", 8))
+        info.pack(anchor="w", padx=14, pady=(6, 2))
+        def add_rule():
+            rng = range_v.get().strip()
+            if not re.match(r"[A-Za-z]+\d+:[A-Za-z]+\d+$", rng):
+                messagebox.showerror(APP, "Range must look like A1:B10", parent=win); return
+            self._sheet_cf_rules().append({"range": rng, "op": op_v.get(),
+                                           "value": val_v.get(), "fill": fill_v.get(),
+                                           "fg": fg_v.get()})
+            self._sheet_draw(); self.status.set(f"Conditional rule added for {rng}")
+        def clear_rules():
+            self._sheet_cf_rules().clear(); self._sheet_draw()
+            self.status.set("Conditional rules cleared")
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=14)
+        tk.Button(bf, text="Add rule", command=add_rule, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Clear all", command=clear_rules, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
 
     def _sheet_new(self):
         if messagebox.askyesno(APP,"Clear spreadsheet?"):
