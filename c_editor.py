@@ -8248,8 +8248,8 @@ class Studio(tk.Tk):
         def add_name():
             name = name_v.get().strip().upper().replace(" ", "_")
             rng = rng_v.get().strip().upper()
-            if not name or not re.match(r"[A-Z][A-Z0-9_]*$", name):
-                messagebox.showerror(APP, "Name must start with a letter and use letters/digits.", parent=win); return
+            if not name or not re.match(r"[A-Z][A-Z0-9_]*$", name) or re.fullmatch(r"[A-Z]+\d+", name):
+                messagebox.showerror(APP, "Use a name that starts with a letter and is not a cell reference.", parent=win); return
             if not re.match(r"[A-Z]+\d+:[A-Z]+\d+$", rng):
                 messagebox.showerror(APP, "Range must look like A1:A10", parent=win); return
             self._sheet_named()[name] = rng; refresh()
