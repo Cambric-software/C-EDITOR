@@ -1116,7 +1116,7 @@ class Studio(tk.Tk):
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
             ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Footnote...",self._doc_footnote),("Endnote...",self._doc_endnote),
-            ("Bookmark...",self._doc_bookmark),("Go to bookmark...",self._doc_goto_bookmark),
+            ("Bookmark...",self._doc_bookmark),("Go to bookmark...",self._doc_goto_bookmark),("Cross-reference...",self._doc_cross_ref),
             ("Checklist",self._checklist),
             ("Flashcard",self._flashcard),("Equation",self._equation),
             ("Answer lines…",self._answer_lines),
@@ -1149,7 +1149,7 @@ class Studio(tk.Tk):
             ("Translate selection…",self._translate),
             ("Translate whole page…",self._translate_page),
             ("Arabic diacritics…",self._diacritics),
-            ("Auto-correct",self._auto_correct),
+            ("Auto-correct",self._auto_correct),("Proofread...",self._doc_proofread),
             ("Find & Replace…",self._find_replace),
             ("Word count",self._words),("Read aloud",self._read_aloud),
             ("✨ AI Writing Assistant…",self._ai_assistant),
@@ -2627,6 +2627,81 @@ class Studio(tk.Tk):
                   relief="flat", font=("Segoe UI", 9, "bold"), pady=4).pack(pady=4)
         tk.Button(win, text="Delete", command=lambda: (self._bookmarks.pop(list(self._bookmarks)[lb.curselection()[0]], None) if lb.curselection() else None, win.destroy()),
                   bg="#334155", fg="white", relief="flat", font=("Segoe UI", 9), pady=4).pack(pady=4)
+
+    def _doc_cross_ref(self):
+        if not self._bookmarks:
+            messagebox.showinfo(APP, "Add a bookmark first (Insert > Bookmark).", parent=self); return
+        win = tk.Toplevel(self); win.title("Cross-reference"); win.transient(self)
+        win.geometry("340x300")
+        lb = tk.Listbox(win, bg=self._surface, fg=self._fg, font=("Segoe UI", 10),
+                        selectbackground="#3B82F6", selectforeground="#FFF")
+        lb.pack(fill="both", expand=True, padx=8, pady=8)
+        for name in self._bookmarks: lb.insert("end", name)
+        def insert_ref(e=None):
+            s = lb.curselection()
+            if not s: return
+            name = list(self._bookmarks)[s[0]]
+            self.editor.insert("insert", f"(see {name})")
+            self._dirt(); self._snapshot()
+            self.status.set(f"Cross-reference inserted: {name}")
+            win.destroy()
+        lb.bind("<Double-Button-1>", insert_ref)
+        tk.Button(win, text="Insert reference", command=insert_ref, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), pady=5).pack(pady=6)
+        tk.Button(win, text="Close", command=win.destroy, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), pady=5).pack(pady=(0,8))
+
+    def _doc_proofread(self):
+        text = self.editor.get("1.0", "end-1c")
+        checks = [
+            (r"\b(\w+)\s+\1\b", "Repeated word"),
+            (r"  +", "Double space"),
+            (r"\s+[,.!?;:]", "Space before punctuation"),
+            (r"\([^)]*$", "Unclosed parenthesis"),
+            (r"[.!?]\s+[a-z]", "Lowercase after sentence"),
+        ]
+        issues = []
+        for rx, label in checks:
+            for m in re.finditer(rx, text, flags=re.IGNORECASE if label=="Repeated word" else 0):
+                idx = m.start()
+                line = text.count("\n", 0, idx) + 1
+                col = idx - (text.rfind("\n", 0, idx) + 1) + 1
+                snippet = text[idx:idx+50].replace("\n", " ")
+                issues.append((line, col, label, snippet))
+        win = tk.Toplevel(self); win.title("Proofread"); win.transient(self)
+        win.geometry("620x360")
+        tk.Label(win, text=f"{len(issues)} issue(s) found", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=12, pady=(10,4))
+        outer = tk.Frame(win); outer.pack(fill="both", expand=True, padx=10, pady=4)
+        lb = tk.Listbox(outer, bg=self._surface, fg=self._fg, font=("Consolas", 9),
+                        selectbackground="#3B82F6", selectforeground="#FFF")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y"); lb.pack(side="left", fill="both", expand=True)
+        for line, col, label, snip in issues:
+            lb.insert("end", f"L{line}:{col}  {label}: {snip[:55]}")
+        def jump(e=None):
+            s = lb.curselection()
+            if not s: return
+            line, col = issues[s[0]][0], issues[s[0]][1]
+            pos = f"{line}.{col-1}"
+            self.editor.mark_set("insert", pos); self.editor.see(pos); self.editor.focus_set()
+        lb.bind("<Double-Button-1>", jump)
+        def fix_safe():
+            cur = self.editor.get("1.0", "end-1c")
+            new = re.sub(r"  +", " ", cur)
+            new = re.sub(r"\s+([,.!?;:])", r"\1", new)
+            if new != cur:
+                self.editor.delete("1.0", "end"); self.editor.insert("1.0", new)
+                self._dirt(); self._snapshot(); self.status.set("Safe fixes applied")
+            win.destroy()
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=8)
+        tk.Button(bf, text="Go to", command=jump, bg="#315C8A", fg="white", relief="flat",
+                  font=("Segoe UI", 9, "bold"), padx=12, pady=4).pack(side="left", padx=4)
+        tk.Button(bf, text="Fix safe issues", command=fix_safe, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=4).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white", relief="flat",
+                  font=("Segoe UI", 9), padx=12, pady=4).pack(side="left", padx=4)
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
