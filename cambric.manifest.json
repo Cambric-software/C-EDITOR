@@ -5,7 +5,7 @@
     "name": "C EDITOR",
     "id": "c-editor",
     "packageId": "com.cambric.c_editor",
-    "version": "4.0.0",
+    "version": "4.1.0",
     "buildNumber": 1,
     "releaseChannel": "stable",
     "publisher": "Cambric",
