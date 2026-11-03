@@ -394,6 +394,8 @@ class Studio(tk.Tk):
             "smart_typography":    True,
             "default_language":    "English",
             "presentation_seconds":4,
+            "brand_colors": ["#315C8A","#F59E0B","#16A34A","#EF4444","#8B5CF6","#0EA5E9"],
+            "brand_fonts": ["Segoe UI","Georgia","Arial","Consolas"],
         }
         self._load_prefs()
         self.track_changes = False
@@ -903,6 +905,7 @@ class Studio(tk.Tk):
             _btn("↪ Redo",self._design_redo_action)
             _btn("⊞ Snap",self._design_snap_toggle)
             _btn("📋 Templates",self._design_templates_gallery)
+            _btn("Brand kit",self._design_brand_kit)
             _sep()
             for t,fn in [("Text",self._design_add_text),
                           ("Rect",lambda:self._design_add_shape("rect")),
@@ -3100,6 +3103,73 @@ class Studio(tk.Tk):
                   font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
         tk.Button(bf,text="Close",command=win.destroy,bg="#334155",fg="white",relief="flat",
                   font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
+
+    def _design_brand_kit(self):
+        win = tk.Toplevel(self); win.title("Brand kit"); win.transient(self)
+        win.geometry("440x430"); win.configure(bg=self._bg)
+        tk.Label(win, text="Brand kit", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=16, pady=(14,2))
+        tk.Label(win, text="Click a color to fill selected objects, or a font to apply it.",
+                 bg=self._bg, fg=PALETTE["muted"], font=("Segoe UI", 8)).pack(anchor="w", padx=16)
+        colors = self.preferences.setdefault("brand_colors", [])
+        cframe = tk.Frame(win, bg=self._bg); cframe.pack(fill="x", padx=16, pady=10)
+        def refresh_colors():
+            for w in cframe.winfo_children(): w.destroy()
+            for i, c in enumerate(colors):
+                b = tk.Button(cframe, bg=c, width=4, relief="flat",
+                              command=lambda col=c: self._brand_apply_color(col))
+                b.grid(row=i//6, column=i%6, padx=3, pady=3)
+                b.bind("<Button-3>", lambda e, col=c: (colors.remove(col), refresh_colors()))
+        refresh_colors()
+        def add_color():
+            c = colorchooser.askcolor(parent=win)[1]
+            if c:
+                colors.append(c); self.preferences["brand_colors"] = colors
+                self._save_prefs(); refresh_colors()
+        tk.Button(win, text="+ Add color", command=add_color, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=10, pady=4).pack(anchor="w", padx=16)
+        tk.Label(win, text="Fonts", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=16, pady=(14,2))
+        fonts = self.preferences.setdefault("brand_fonts", [])
+        fframe = tk.Frame(win, bg=self._bg); fframe.pack(fill="x", padx=16)
+        def refresh_fonts():
+            for w in fframe.winfo_children(): w.destroy()
+            for i, f in enumerate(fonts):
+                b = tk.Button(fframe, text=f, bg="#334155", fg="white", relief="flat",
+                              font=(f, 10), width=14,
+                              command=lambda ff=f: self._brand_apply_font(ff))
+                b.grid(row=i//2, column=i%2, padx=4, pady=3, sticky="ew")
+        refresh_fonts()
+        def add_font():
+            f = simpledialog.askstring("Add font", "Font family:", parent=win)
+            if f:
+                fonts.append(f.strip()); self.preferences["brand_fonts"] = fonts
+                self._save_prefs(); refresh_fonts()
+        tk.Button(win, text="+ Add font", command=add_font, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=10, pady=4).pack(anchor="w", padx=16, pady=8)
+        tk.Label(win, text="Right-click a color swatch to remove it.",
+                 bg=self._bg, fg=PALETTE["muted"], font=("Segoe UI", 8)).pack(anchor="w", padx=16)
+        tk.Button(win, text="Close", command=win.destroy, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), padx=16, pady=5).pack(pady=12)
+
+    def _brand_apply_color(self, col):
+        src = list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src:
+            self.status.set("Select an object first; color saved to brand kit."); return
+        for o in src:
+            if o.kind == "text":
+                o.text_color = col
+            else:
+                o.fill = col
+                o.stroke = col
+        self._dc_redraw(); self.status.set(f"Brand color {col} applied")
+
+    def _brand_apply_font(self, fam):
+        src = list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src:
+            self.status.set("Select an object first; font saved to brand kit."); return
+        for o in src: o.font_fam = fam
+        self._dc_redraw(); self.status.set(f"Font {fam} applied")
 
     def _design_duplicate(self):
         src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
