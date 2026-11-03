@@ -3252,6 +3252,27 @@ class Studio(tk.Tk):
             cell["formula"]=""; cell["value"]=raw
         self._sheet_sel=(row,min(self._COLS-1,col+1)); self._sheet_draw()
 
+    def _crit_match(self, value, crit: str) -> bool:
+        crit = str(crit).strip().strip('"').strip("'")
+        m = re.match(r"^(>=|<=|<>|>|<|=)(.*)$", crit)
+        if m:
+            op, rhs = m.group(1), m.group(2).strip()
+            try:
+                a, b = float(value), float(rhs)
+            except Exception:
+                a, b = str(value).upper(), rhs.upper()
+            if op == ">=": return a >= b
+            if op == "<=": return a <= b
+            if op == ">":  return a > b
+            if op == "<":  return a < b
+            if op == "<>": return a != b
+            if op == "=":  return a == b
+            return False
+        try:
+            return float(value) == float(crit)
+        except Exception:
+            return str(value).upper() == crit.upper()
+
     def _eval_formula(self,expr:str)->str:
         try:
             expr=expr.upper()
@@ -3331,18 +3352,14 @@ class Studio(tk.Tk):
             m=re.match(r"COUNTIF\(([A-Z]+)(\d+):([A-Z]+)(\d+),(.+)\)",expr)
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
-                crit=m.group(5).strip().strip('"').strip("'")
-                try: c=float(crit)
-                except Exception: c=None
-                n=sum(1 for v in vals if (c is not None and v==c) or (c is None and str(v)==crit))
+                crit=m.group(5).strip()
+                n=sum(1 for v in vals if self._crit_match(v, crit))
                 return str(n)
             m=re.match(r"SUMIF\(([A-Z]+)(\d+):([A-Z]+)(\d+),(.+)\)",expr)
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
-                crit=m.group(5).strip().strip('"').strip("'")
-                try: c=float(crit)
-                except Exception: c=None
-                return str(sum(v for v in vals if (c is not None and v==c) or (c is None and str(v)==crit)))
+                crit=m.group(5).strip()
+                return str(sum(v for v in vals if self._crit_match(v, crit)))
             m=re.match(r"IF\((.+),(.+),(.+)\)",expr)
             if m:
                 cond=m.group(1).strip(); tv=m.group(2).strip(); fv=m.group(3).strip()
@@ -3370,6 +3387,139 @@ class Studio(tk.Tk):
                         except Exception: return x
                     return str(conv(tv) if ok else conv(fv))
                 except Exception: return "#ERR"
+            # ---- extended worksheet functions ----
+            m=re.match(r"IFERROR\((.+),(.+)\)",expr)
+            if m:
+                inner=self._eval_formula(m.group(1).strip())
+                if str(inner).startswith("#"):
+                    fb=m.group(2).strip()
+                    if fb.startswith('"') and fb.endswith('"'): return fb.strip('"')
+                    if re.match(r"[A-Z]+\d+$",fb):
+                        mm=re.match(r"([A-Z]+)(\d+)",fb)
+                        return str(self._sheet_data.get(self._sheet_key(int(mm.group(2))-1,self._col_index(mm.group(1))),{}).get("value",""))
+                    return fb
+                return str(inner)
+            m=re.match(r"INDEX\(([A-Z]+)(\d+):([A-Z]+)(\d+),(\d+)(?:,(\d+))?\)",expr)
+            if m:
+                c1=self._col_index(m.group(1)); r1=int(m.group(2))-1
+                c2=self._col_index(m.group(3)); r2=int(m.group(4))-1
+                ri=int(m.group(5))-1; ci=int(m.group(6))-1 if m.group(6) else 0
+                rr=min(r1,r2)+ri; cc=min(c1,c2)+ci
+                if min(r1,r2)<=rr<=max(r1,r2) and min(c1,c2)<=cc<=max(c1,c2):
+                    v=self._sheet_data.get(self._sheet_key(rr,cc),{}).get("value","")
+                    return v if v!="" else "0"
+                return "#REF!"
+            m=re.match(r"MATCH\((.+),([A-Z]+)(\d+):([A-Z]+)(\d+)(?:,(-?\d+))?\)",expr)
+            if m:
+                key=m.group(1).strip().strip('"').strip("'")
+                vals=self._range_vals(m.group(2),int(m.group(3))-1,m.group(4),int(m.group(5))-1)
+                mt=int(m.group(6)) if m.group(6) else 1
+                try: kv=float(key)
+                except Exception: kv=None
+                if mt==0:
+                    for i,v in enumerate(vals):
+                        if (kv is not None and v==kv) or (kv is None and str(v).upper()==key.upper()):
+                            return str(i+1)
+                    return "#N/A"
+                best=None; best_i=None
+                for i,v in enumerate(vals):
+                    if mt>0 and (kv is None or v<=kv):
+                        if best is None or v>=best: best=v; best_i=i+1
+                    elif mt<0 and (kv is None or v>=kv):
+                        if best is None or v<=best: best=v; best_i=i+1
+                return str(best_i) if best_i is not None else "#N/A"
+            m=re.match(r"SUMPRODUCT\(([A-Z]+)(\d+):([A-Z]+)(\d+),([A-Z]+)(\d+):([A-Z]+)(\d+)\)",expr)
+            if m:
+                a=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
+                b=self._range_vals(m.group(5),int(m.group(6))-1,m.group(7),int(m.group(8))-1)
+                return str(sum(x*y for x,y in zip(a,b)))
+            m=re.match(r"COUNTBLANK\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)",expr)
+            if m:
+                c1=self._col_index(m.group(1)); r1=int(m.group(2))-1
+                c2=self._col_index(m.group(3)); r2=int(m.group(4))-1
+                n=0
+                for rr in range(min(r1,r2),max(r1,r2)+1):
+                    for cc in range(min(c1,c2),max(c1,c2)+1):
+                        if str(self._sheet_data.get(self._sheet_key(rr,cc),{}).get("value",""))=="": n+=1
+                return str(n)
+            m=re.match(r"MEDIAN\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)",expr)
+            if m:
+                vals=sorted(self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1))
+                if not vals: return "0"
+                n=len(vals); mid=n//2
+                return str(vals[mid] if n%2 else round((vals[mid-1]+vals[mid])/2,4))
+            m=re.match(r"STDEV\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)",expr)
+            if m:
+                vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
+                if len(vals)<2: return "0"
+                avg=sum(vals)/len(vals)
+                return str(round((sum((v-avg)**2 for v in vals)/(len(vals)-1))**0.5,4))
+            m=re.match(r"ROUND\((.+),(\d+)\)",expr)
+            if m:
+                return str(round(float(self._eval_formula(m.group(1).strip())),int(m.group(2))))
+            m=re.match(r"ABS\((.+)\)",expr)
+            if m:
+                return str(abs(float(self._eval_formula(m.group(1).strip()))))
+            m=re.match(r"SQRT\((.+)\)",expr)
+            if m:
+                return str(round(float(self._eval_formula(m.group(1).strip()))**0.5,6))
+            m=re.match(r"POWER\((.+),(.+)\)",expr)
+            if m:
+                return str(round(float(self._eval_formula(m.group(1).strip()))**float(self._eval_formula(m.group(2).strip())),6))
+            m=re.match(r"MOD\((.+),(.+)\)",expr)
+            if m:
+                a=float(self._eval_formula(m.group(1).strip())); b=float(self._eval_formula(m.group(2).strip()))
+                return str(a % b) if b else "#DIV/0!"
+            m=re.match(r"LEFT\((.+),(\d+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                if a.startswith('"') and a.endswith('"'): s=a.strip('"')
+                else: s=str(self._eval_formula(a))
+                return s[:int(m.group(2))]
+            m=re.match(r"RIGHT\((.+),(\d+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                if a.startswith('"') and a.endswith('"'): s=a.strip('"')
+                else: s=str(self._eval_formula(a))
+                n=int(m.group(2)); return s[-n:] if n else ""
+            m=re.match(r"MID\((.+),(\d+),(\d+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                if a.startswith('"') and a.endswith('"'): s=a.strip('"')
+                else: s=str(self._eval_formula(a))
+                st=int(m.group(2))-1; ln=int(m.group(3))
+                return s[st:st+ln]
+            m=re.match(r"TRIM\((.+)\)",expr)
+            if m:
+                a=m.group(1).strip()
+                s=a.strip('"') if a.startswith('"') and a.endswith('"') else str(self._eval_formula(a))
+                return " ".join(s.split())
+            m=re.match(r"TODAY\(\)",expr)
+            if m:
+                import datetime
+                return datetime.date.today().isoformat()
+            m=re.match(r"NOW\(\)",expr)
+            if m:
+                import datetime
+                return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            m=re.match(r"COUNTIFS\((.+)\)",expr)
+            if m:
+                parts=[x.strip() for x in m.group(1).split(",")]
+                if len(parts)%2==0:
+                    ranges=[]; crits=[]
+                    for i in range(0,len(parts),2):
+                        rm=re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)",parts[i])
+                        if not rm: return "#ERR"
+                        ranges.append(self._range_vals(rm.group(1),int(rm.group(2))-1,rm.group(3),int(rm.group(4))-1))
+                        crits.append(parts[i+1].strip().strip('"').strip("'"))
+                    n=0
+                    for i in range(min(len(x) for x in ranges)):
+                        ok=True
+                        for rng,crit in zip(ranges,crits):
+                            if not self._crit_match(rng[i], crit): ok=False; break
+                        if ok: n+=1
+                    return str(n)
+                return "#ERR"
             safe=re.sub(r"[^0-9+\-*/()., ]","",expr)
             return str(eval(safe))  # noqa: S307
         except Exception: return "#ERR"
@@ -3431,9 +3581,18 @@ class Studio(tk.Tk):
         cell=self._sheet_data.setdefault(key,{}); cell["bold"]=not cell.get("bold",False)
         self._sheet_draw()
     def _sheet_formula_help(self):
-        messagebox.showinfo(APP,"Formulas start with =\n""=SUM(A1:B5)\n=AVERAGE(A1:A10)\n=COUNT(A1:A10)\n"
-        "=MAX(A1:A10)\n=MIN(A1:A10)\n=COUNTIF(A1:A10,5)\n=SUMIF(A1:A10,5)\n"
-         "=VLOOKUP(A1,A2:B10,2)\n=IF(A1>5,\"yes\",\"no\")\n=CONCATENATE(A1,B1)\n=LEN(A1)\n=UPPER(A1)\n=2+3*4\n\nPress Enter to confirm.")
+        messagebox.showinfo(APP,"Formulas start with =\n"
+        "=SUM(A1:B5)  =AVERAGE(A1:A10)  =COUNT(A1:A10)\n"
+        "=MAX(A1:A10)  =MIN(A1:A10)  =MEDIAN(A1:A10)\n"
+        "=COUNTIF(A1:A10,\">5\")  =SUMIF(A1:A10,\">5\")\n"
+        "=COUNTIFS(A1:A10,\">5\",B1:B10,\"<20\")\n"
+        "=VLOOKUP(A1,A2:B10,2)  =INDEX(A1:B10,2,2)\n"
+        "=MATCH(20,A1:A10,0)  =SUMPRODUCT(A1:A5,B1:B5)\n"
+        "=IF(A1>5,\"yes\",\"no\")  =IFERROR(1/0,0)\n"
+        "=CONCATENATE(A1,B1)  =LEFT(A1,3)  =RIGHT(A1,3)\n"
+        "=MID(A1,2,3)  =TRIM(A1)  =LEN(A1)  =UPPER(A1)\n"
+        "=ROUND(3.14159,2)  =ABS(-5)  =SQRT(16)  =MOD(10,3)\n"
+        "=TODAY()  =NOW()  =2+3*4\n\nPress Enter to confirm.")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  SLIDES  methods
