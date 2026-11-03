@@ -366,6 +366,7 @@ class Studio(tk.Tk):
         self._anim_layer       = 1
         self._anim_playing     = False
         self._anim_color       = "#315C8A"
+        self._anim_fx = {"brightness":1.0,"contrast":1.0,"blur":0.0,"vignette":False}
 
         # ui vars
         self.zoom       = tk.IntVar(value=80)
@@ -1055,6 +1056,7 @@ class Studio(tk.Tk):
             _btn("🎞 GIF",self._anim_export_gif)
             _btn("🖼 PNG seq",self._anim_export_png_seq)
             _btn("MP4",self._anim_export_mp4)
+            _btn("FX",self._anim_effects_dialog)
             _sep()
             _label("FPS:")
             self._anim_fps_var=tk.IntVar(value=self._anim_project["fps"])
@@ -5311,7 +5313,53 @@ class Studio(tk.Tk):
                 a=limg.getchannel("A").point(lambda v:int(v*opac))
                 limg.putalpha(a)
             base.alpha_composite(limg)
-        return base.convert("RGB")
+        img=base.convert("RGB")
+        fx=getattr(self,"_anim_fx",{})
+        try:
+            from PIL import ImageEnhance, ImageFilter
+            if fx.get("brightness",1.0)!=1.0: img=ImageEnhance.Brightness(img).enhance(max(0,fx["brightness"]))
+            if fx.get("contrast",1.0)!=1.0: img=ImageEnhance.Contrast(img).enhance(max(0,fx["contrast"]))
+            if fx.get("blur",0.0)>0: img=img.filter(ImageFilter.GaussianBlur(fx["blur"]))
+            if fx.get("vignette"):
+                mask=Image.radial_gradient("L").resize((pw,ph))
+                mask=mask.point(lambda v:int(255-v*0.55))
+                black=Image.new("RGB",(pw,ph),(0,0,0))
+                img=Image.composite(img,black,mask)
+        except Exception:
+            pass
+        return img
+
+    def _anim_effects_dialog(self):
+        win = tk.Toplevel(self); win.title("Animation effects"); win.transient(self)
+        win.geometry("380x300"); win.configure(bg=self._bg)
+        fx = self._anim_fx
+        bv = tk.DoubleVar(value=fx.get("brightness",1.0))
+        cv = tk.DoubleVar(value=fx.get("contrast",1.0))
+        zv = tk.DoubleVar(value=fx.get("blur",0.0))
+        vg = tk.BooleanVar(value=fx.get("vignette",False))
+        tk.Label(win, text="Frame effects (apply to GIF/PNG/MP4 exports)",
+                 bg=self._bg, fg=self._fg, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(12,6))
+        def row(label,var,lo,hi,res):
+            f=tk.Frame(win,bg=self._bg); f.pack(fill="x",padx=14,pady=5)
+            tk.Label(f,text=label,width=12,anchor="w",bg=self._bg,fg=self._fg,
+                     font=("Segoe UI",9)).pack(side="left")
+            tk.Scale(f,from_=lo,to=hi,resolution=res,orient="horizontal",variable=var,
+                     showvalue=True,length=200,bg=self._bg,fg=self._fg,
+                     highlightthickness=0,troughcolor="#334155").pack(side="left")
+        row("Brightness",bv,0.1,3.0,0.05); row("Contrast",cv,0.1,3.0,0.05); row("Blur",zv,0.0,20.0,0.5)
+        ttk.Checkbutton(win,text="Vignette",variable=vg).pack(anchor="w",padx=14,pady=4)
+        def apply_fx():
+            self._anim_fx={"brightness":bv.get(),"contrast":cv.get(),"blur":zv.get(),"vignette":vg.get()}
+            self._anim_redraw(); self.status.set("Animation effects applied to exports")
+        def reset_fx():
+            bv.set(1.0); cv.set(1.0); zv.set(0.0); vg.set(False); apply_fx()
+        bf=tk.Frame(win,bg=self._bg); bf.pack(pady=12)
+        tk.Button(bf,text="Apply",command=apply_fx,bg="#315C8A",fg="white",relief="flat",
+                  font=("Segoe UI",9,"bold"),padx=14,pady=5).pack(side="left",padx=4)
+        tk.Button(bf,text="Reset",command=reset_fx,bg="#334155",fg="white",relief="flat",
+                  font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
+        tk.Button(bf,text="Close",command=win.destroy,bg="#334155",fg="white",relief="flat",
+                  font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
 
     def _anim_export_gif(self):
         try: from PIL import Image
