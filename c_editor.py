@@ -4562,8 +4562,45 @@ class Studio(tk.Tk):
             step(len(clips),"Joining clips...")
             manifest=work/"concat.txt"
             manifest.write_text("\n".join("file '%s'"%s.as_posix() for s in segments),encoding="utf-8")
-            _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",out],
+            joined=work/"joined.mp4"
+            _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",str(joined)],
                     check=True,capture_output=True)
+            # burn in titles + captions
+            step(len(clips),"Burning in titles and captions...")
+            def _drawtext(i, text, s, e, size, y, color):
+                tf=work/f"txt_{i:03d}.txt"
+                tf.write_text(str(text).replace("\n"," "),encoding="utf-8")
+                tp=str(tf).replace("\\","/").replace(":","\\:")
+                fontfile="C\\:/Windows/Fonts/segoeuib.ttf"
+                return ("drawtext=textfile='%s':enable='between(t,%.3f,%.3f)':"
+                        "fontfile='%s':fontcolor=%s:fontsize=%d:"
+                        "x=(w-text_w)/2:y=%s:box=1:boxcolor=black@0.45:boxborderw=12") % (
+                        tp,max(0,s),max(0,e),fontfile,color,size,y)
+            overlays=[]; ti=0
+            for tr in self._video_project.get("tracks",[]):
+                if tr.get("kind")!="title" or tr.get("muted"): continue
+                for c in tr.get("clips",[]):
+                    txt=c.get("text","").strip()
+                    if not txt: continue
+                    try: off=float(c.get("offset",0) or 0)
+                    except Exception: off=0.0
+                    try: dur=float(c.get("end",5) or 5)-float(c.get("start",0) or 0)
+                    except Exception: dur=5.0
+                    overlays.append(_drawtext(ti,txt,off,off+max(0.5,dur),44,"h*0.12","white")); ti+=1
+            for cap in self._video_project.get("captions",[]):
+                txt=str(cap.get("text","")).strip()
+                if not txt: continue
+                try: cs=float(cap.get("start",0) or 0); ce=float(cap.get("end",3) or 3)
+                except Exception: cs,ce=0.0,3.0
+                overlays.append(_drawtext(ti,txt,cs,ce,34,"h-110","white")); ti+=1
+            if overlays:
+                _sp.run([ff,"-y","-i",str(joined),"-vf",",".join(overlays),
+                         "-c:v","libx264","-preset","fast","-crf","22","-pix_fmt","yuv420p",
+                         "-c:a","copy","-movflags","+faststart",out],
+                        check=True,capture_output=True)
+            else:
+                import shutil as _shc
+                _shc.copy2(joined,out)
             prog.destroy()
             try:
                 import shutil as _sh2
