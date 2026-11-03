@@ -2687,6 +2687,8 @@ class Studio(tk.Tk):
                 except Exception:
                     c.create_rectangle(x0,y0,x1,y1,fill="#DDD",outline="#AAA")
                     c.create_text((x0+x1)//2,(y0+y1)//2,text=Path(obj.image_path).name[:20],fill="#666")
+            if getattr(obj, "locked", False):
+                c.create_text(x0+4, y0+4, text="L", anchor="nw", font=("Segoe UI", 9, "bold"), fill="#F59E0B")
             if obj is self._sel_obj:
                 c.create_rectangle(x0-3,y0-3,x1+3,y1+3,outline="#F59E0B",width=2,dash=(5,3))
                 c.create_rectangle(x1-5,y1-5,x1+5,y1+5,fill="#F59E0B",outline="")
@@ -2708,6 +2710,7 @@ class Studio(tk.Tk):
 
     def _dc_drag(self,e):
         if self._sel_obj is None or self._drag_start is None: return
+        if getattr(self._sel_obj, "locked", False): return
         dx=e.x-self._drag_start[0]; dy=e.y-self._drag_start[1]
         scale=getattr(self,"_dc_scale",1.0)
         nx=self._drag_orig[0]+dx/scale
@@ -2863,6 +2866,12 @@ class Studio(tk.Tk):
                       relief="flat", font=("Segoe UI", 9)).pack(side="left", padx=2)
         _refresh()
         tk.Button(outer, text="Close", command=win.destroy).pack(pady=(8, 0))
+
+    def _design_toggle_lock(self):
+        if self._sel_obj is None: return
+        self._sel_obj.locked = not getattr(self._sel_obj, "locked", False)
+        self._dc_redraw()
+        self.status.set("Locked" if self._sel_obj.locked else "Unlocked")
 
     def _design_reorder(self,d:int):
         if self._sel_obj is None: return
