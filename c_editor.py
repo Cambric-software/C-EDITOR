@@ -7870,7 +7870,7 @@ class Studio(tk.Tk):
         if not range_str: return
 
         chart_type = simpledialog.askstring(
-        "Chart type", "Type: bar / line / pie",
+        "Chart type", "Type: bar / stacked / line / area / pie / doughnut / scatter",
             initialvalue="bar", parent=self)
         if not chart_type: return
         chart_type = chart_type.strip().lower()
@@ -7920,7 +7920,7 @@ class Studio(tk.Tk):
         PAD=50; colors=["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"]
         max_val=max((v for row in series for v in row),default=1) or 1
 
-        if chart_type=="pie" and series:
+        if chart_type in ("pie","doughnut") and series:
             vals=[row[0] if row else 0 for row in series]
             total=sum(vals) or 1
             cx,cy,r=cw//2,ch2//2,min(cw,ch2)//2-40
@@ -7936,6 +7936,39 @@ class Studio(tk.Tk):
                 c.create_text(lx,ly,text=f"{lbl}\n{val:.1f}",fill="white",
                                font=("Segoe UI",8),justify="center")
                 start+=extent
+            if chart_type=="doughnut":
+                ir=int(r*0.55)
+                c.create_oval(cx-ir,cy-ir,cx+ir,cy+ir,fill="#1E293B",outline="#1E293B")
+                c.create_text(cx,cy,text=f"{total:.1f}",fill="white",font=("Segoe UI",10,"bold"))
+        elif chart_type=="area":
+            num=len(labels)
+            if num<2: return
+            step=(cw-PAD*2)/(num-1)
+            num_series=len(series[0]) if series else 1
+            for si in range(num_series):
+                pts=[PAD,ch2-PAD]
+                for i,row in enumerate(series):
+                    v=row[si] if si<len(row) else 0
+                    pts.extend([PAD+i*step,ch2-PAD-int(v/max_val*(ch2-PAD*2))])
+                pts.extend([cw-PAD,ch2-PAD])
+                c.create_polygon(*pts,fill=colors[si%len(colors)],outline="",stipple="gray50")
+                c.create_line(*[q for j,q in enumerate(pts) if j not in (0,1,len(pts)-2,len(pts)-1)],
+                              fill=colors[si%len(colors)],width=2,smooth=True)
+            step2=(cw-PAD*2)/max(1,num-1)
+            for i,lbl in enumerate(labels):
+                c.create_text(PAD+i*step2,ch2-10,text=lbl,fill="#94A3B8",font=("Segoe UI",8))
+        elif chart_type=="scatter":
+            num=len(labels)
+            if num<2: return
+            xv=[row[0] if row else 0 for row in series]
+            yv=[row[1] if len(row)>1 else 0 for row in series]
+            xmin,xmax=min(xv),max(xv); ymax=max(yv) or 1
+            if xmax==xmin: xmax=xmin+1
+            for i,(x,y) in enumerate(zip(xv,yv)):
+                px=PAD+int((x-xmin)/(xmax-xmin)*(cw-PAD*2))
+                py=ch2-PAD-int(y/ymax*(ch2-PAD*2))
+                c.create_oval(px-4,py-4,px+4,py+4,fill=colors[0],outline="white")
+                c.create_text(px,py-10,text=labels[i][:10],fill="#94A3B8",font=("Segoe UI",7))
         elif chart_type=="line":
             num=len(labels)
             if num<2: return
@@ -7958,6 +7991,20 @@ class Studio(tk.Tk):
             for i,lbl in enumerate(labels):
                 c.create_text(PAD+i*step2,ch2-10,text=lbl,fill="#94A3B8",
                                font=("Segoe UI",8))
+        elif chart_type=="stacked":
+            num=len(labels)
+            bar_w=max(8,(cw-PAD*2)//(num+1))
+            num_series=len(series[0]) if series else 1
+            for i,(lbl,row) in enumerate(zip(labels,series)):
+                bottom=0
+                for si,v in enumerate(row):
+                    bh=int(v/max_val*(ch2-PAD*2))
+                    x1=PAD+i*(bar_w+6); x2=x1+bar_w-2
+                    y1=ch2-PAD-(bottom+bh); y2=ch2-PAD-bottom
+                    c.create_rectangle(x1,y1,x2,y2,fill=colors[si%len(colors)],outline="#1E293B")
+                    bottom+=bh
+                c.create_text(PAD+i*(bar_w+6)+bar_w//2,ch2-8,text=lbl[:8],
+                              fill="#94A3B8",font=("Segoe UI",7))
         else:  # bar
             num=len(labels)
             bar_w=max(8,(cw-PAD*2)//(num+1))
