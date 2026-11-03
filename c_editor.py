@@ -1766,13 +1766,15 @@ class Studio(tk.Tk):
         self._vid_start=tk.StringVar(value="0"); self._vid_end=tk.StringVar(value="")
         self._vid_speed=tk.DoubleVar(value=1.0); self._vid_vol=tk.DoubleVar(value=1.0)
         self._vid_opac=tk.DoubleVar(value=1.0); self._vid_muted=tk.BooleanVar(value=False)
+        self._vid_fadein=tk.DoubleVar(value=0.0); self._vid_fadeout=tk.DoubleVar(value=0.0)
         self._vid_trans=tk.StringVar(value="Cut"); self._vid_filter=tk.StringVar(value="None")
         cf=tk.Frame(clip_tab,bg=self._bg); cf.pack(fill="x",padx=8)
         cf.columnconfigure(1,weight=1)
         for row,(lbl,var,kind) in enumerate([
             ("Trim start",self._vid_start,"entry"),("Trim end",self._vid_end,"entry"),
             ("Speed ×",self._vid_speed,"spin"),("Volume",self._vid_vol,"spin"),
-            ("Opacity",self._vid_opac,"spin"),
+            ("Opacity",self._vid_opac,"spin"),("Fade in (s)",self._vid_fadein,"spin"),
+            ("Fade out (s)",self._vid_fadeout,"spin"),
         ]):
             tk.Label(cf,text=lbl,bg=self._bg,fg=P["muted"],font=("Segoe UI",8)).grid(
                 row=row,column=0,sticky="w",pady=2)
@@ -3611,6 +3613,7 @@ class Studio(tk.Tk):
         self._vid_start.set(clip.get("start","0")); self._vid_end.set(clip.get("end",""))
         self._vid_speed.set(clip.get("speed",1.0)); self._vid_vol.set(clip.get("volume",1.0))
         self._vid_opac.set(clip.get("opacity",1.0)); self._vid_muted.set(clip.get("muted",False))
+        self._vid_fadein.set(clip.get("fade_in",0.0)); self._vid_fadeout.set(clip.get("fade_out",0.0))
         self._vid_trans.set(clip.get("transition","Cut")); self._vid_filter.set(clip.get("filter","None"))
         cg=clip.get("color_grading",{})
         for k,v in self._grade_vars.items(): v.set(cg.get(k,0))
@@ -3798,6 +3801,7 @@ class Studio(tk.Tk):
         clip.update({"start":self._vid_start.get(),"end":self._vid_end.get(),
                       "speed":self._vid_speed.get(),"volume":self._vid_vol.get(),
                       "opacity":self._vid_opac.get(),"muted":self._vid_muted.get(),
+                      "fade_in":self._vid_fadein.get(),"fade_out":self._vid_fadeout.get(),
                       "transition":self._vid_trans.get(),"filter":self._vid_filter.get()})
         self._video_refresh(); self._vid_status.set("Clip updated.")
 
