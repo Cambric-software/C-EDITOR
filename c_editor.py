@@ -1118,6 +1118,13 @@ class Studio(tk.Tk):
             ("Paste",lambda:self.editor.event_generate("<<Paste>>")),
             ("Select all",lambda:self.editor.event_generate("<<SelectAll>>")),
             ("Find & Replace…",self._find_replace),("Word count",self._words),
+            ("Statistics...",self._doc_stats),
+            ("UPPERCASE selection",lambda:self._change_case("upper")),
+            ("lowercase selection",lambda:self._change_case("lower")),
+            ("Title Case selection",lambda:self._change_case("title")),
+            ("Sentence case selection",lambda:self._change_case("sentence")),
+            ("Sort lines A-Z",lambda:self._sort_lines(False)),
+            ("Sort lines Z-A",lambda:self._sort_lines(True)),
         ])
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
@@ -2708,6 +2715,60 @@ class Studio(tk.Tk):
                   relief="flat", font=("Segoe UI", 9), padx=12, pady=4).pack(side="left", padx=4)
         tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white", relief="flat",
                   font=("Segoe UI", 9), padx=12, pady=4).pack(side="left", padx=4)
+
+    def _change_case(self, mode: str):
+        try:
+            a, b = self._selected()
+        except Exception:
+            a, b = None, None
+        if not a or a == b:
+            messagebox.showinfo(APP, "Select some text first.", parent=self); return
+        txt = self.editor.get(a, b)
+        if mode == "upper":
+            new = txt.upper()
+        elif mode == "lower":
+            new = txt.lower()
+        elif mode == "title":
+            new = " ".join(w[:1].upper() + w[1:].lower() for w in txt.split(" "))
+        elif mode == "sentence":
+            new = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), txt.lower())
+        else:
+            new = txt
+        self.editor.delete(a, b); self.editor.insert(a, new)
+        self._dirt(); self._snapshot(); self.status.set("Case changed")
+
+    def _sort_lines(self, reverse: bool = False):
+        try:
+            a, b = self._selected()
+        except Exception:
+            a, b = None, None
+        if not a or a == b:
+            messagebox.showinfo(APP, "Select the lines to sort first.", parent=self); return
+        lines = self.editor.get(a, b).splitlines()
+        lines.sort(key=lambda s: s.lower(), reverse=reverse)
+        self.editor.delete(a, b); self.editor.insert(a, "\n".join(lines))
+        self._dirt(); self._snapshot(); self.status.set("Lines sorted")
+
+    def _doc_stats(self):
+        body = self.editor.get("1.0", "end-1c")
+        words = len(re.findall(r"\b\w+\b", body, flags=re.UNICODE))
+        chars = len(body)
+        chars_ns = len(re.sub(r"\s", "", body))
+        paragraphs = len([p for p in re.split(r"\n\s*\n", body) if p.strip()])
+        lines = body.count("\n") + 1
+        sentences = len([s for s in re.split(r"[.!?]+", body) if s.strip()])
+        read_min = max(1, round(words / 200)) if words else 0
+        pages = len(self.doc.pages)
+        msg = ("Document statistics\n\n"
+               f"Pages: {pages}\n"
+               f"Words: {words:,}\n"
+               f"Characters (with spaces): {chars:,}\n"
+               f"Characters (no spaces): {chars_ns:,}\n"
+               f"Paragraphs: {paragraphs:,}\n"
+               f"Lines: {lines:,}\n"
+               f"Sentences: {sentences:,}\n"
+               f"Reading time: about {read_min} minute(s)")
+        messagebox.showinfo(APP, msg, parent=self)
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
