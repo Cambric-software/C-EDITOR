@@ -945,6 +945,8 @@ class Studio(tk.Tk):
             _btn("📊 Chart",self._sheet_chart)
             _btn("Pivot",self._sheet_pivot)
             _btn("Filter rows",self._sheet_filter)
+            _btn("Validate",self._sheet_validation_dialog)
+            _btn("Names",self._sheet_named_dialog)
             _btn("Cond. format",self._sheet_cf_dialog)
             _btn("⇃ Auto-fill",self._sheet_auto_fill)
             _btn("↕ Sort",self._sheet_sort_column)
@@ -3648,6 +3650,10 @@ class Studio(tk.Tk):
     def _sheet_formula_enter(self,e=None):
         row,col=self._sheet_sel; key=self._sheet_key(row,col)
         raw=self._formula_var.get(); cell=self._sheet_data.setdefault(key,{})
+        err=self._sheet_validate_value(key, raw)
+        if err:
+            messagebox.showwarning(APP, err, parent=self)
+            return
         if raw.startswith("="):
             cell["formula"]=raw; cell["value"]=self._eval_formula(raw[1:])
         else:
@@ -3678,6 +3684,9 @@ class Studio(tk.Tk):
     def _eval_formula(self,expr:str)->str:
         try:
             expr=expr.upper()
+            for _name,_rng in sorted(self._sheet_named().items(), key=lambda kv: -len(kv[0])):
+                if _name:
+                    expr=re.sub(r"\b"+re.escape(_name.upper())+r"\b", _rng.upper(), expr)
             m=re.match(r"SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)",expr)
             if m:
                 vals=self._range_vals(m.group(1),int(m.group(2))-1,m.group(3),int(m.group(4))-1)
@@ -7838,6 +7847,157 @@ class Studio(tk.Tk):
         self._sheet_data.clear(); self._sheet_data.update(out)
         self._sheet_draw(); self._sheet_refresh_tabs()
         self.status.set(f"Filtered rows: {dst_row-1}")
+
+    def _sheet_named(self):
+        if not hasattr(self, "_sheet_tabs") or not self._sheet_tabs:
+            return {}
+        idx = getattr(self, "_sheet_tab_idx", 0)
+        return self._sheet_tabs[idx].setdefault("named", {})
+
+    def _sheet_validations(self):
+        if not hasattr(self, "_sheet_tabs") or not self._sheet_tabs:
+            return []
+        idx = getattr(self, "_sheet_tab_idx", 0)
+        return self._sheet_tabs[idx].setdefault("validations", [])
+
+    def _sheet_validate_value(self, key, raw):
+        if raw.startswith("="):
+            return None
+        for rule in self._sheet_validations():
+            if not self._cf_in_range(key, rule.get("range", "")):
+                continue
+            typ = rule.get("type", "any")
+            val = str(raw)
+            if typ == "number":
+                try:
+                    num = float(val) if val != "" else 0.0
+                except Exception:
+                    return rule.get("msg") or f"{key}: enter a number."
+                if val != "":
+                    if rule.get("min", "") != "":
+                        try:
+                            if num < float(rule["min"]):
+                                return rule.get("msg") or f"{key}: minimum is {rule['min']}."
+                        except Exception:
+                            pass
+                    if rule.get("max", "") != "":
+                        try:
+                            if num > float(rule["max"]):
+                                return rule.get("msg") or f"{key}: maximum is {rule['max']}."
+                        except Exception:
+                            pass
+            elif typ == "list":
+                allowed = [x.strip() for x in str(rule.get("values", "")).split(",") if x.strip()]
+                if val != "" and val not in allowed:
+                    return rule.get("msg") or f"{key}: allowed values are {', '.join(allowed)}."
+            elif typ == "text":
+                if rule.get("maxlen", "") != "":
+                    try:
+                        if len(val) > int(rule["maxlen"]):
+                            return rule.get("msg") or f"{key}: maximum {rule['maxlen']} characters."
+                    except Exception:
+                        pass
+        return None
+
+    def _sheet_validation_dialog(self):
+        win = tk.Toplevel(self); win.title("Data validation"); win.transient(self)
+        win.geometry("400x360"); win.configure(bg=self._bg)
+        tk.Label(win, text="Restrict what can be entered", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(14, 6))
+        def row(label):
+            f = tk.Frame(win, bg=self._bg); f.pack(fill="x", padx=14, pady=3)
+            tk.Label(f, text=label, width=12, anchor="w", bg=self._bg, fg=self._fg).pack(side="left")
+            return f
+        f1 = row("Range"); rng_v = tk.StringVar(value="A1:A20")
+        ttk.Entry(f1, textvariable=rng_v, width=22).pack(side="left")
+        f2 = row("Type"); typ_v = tk.StringVar(value="number")
+        ttk.Combobox(f2, textvariable=typ_v, values=["number","list","text","any"],
+                     state="readonly", width=10).pack(side="left")
+        f3 = row("Min / max"); min_v = tk.StringVar(value=""); max_v = tk.StringVar(value="")
+        ttk.Entry(f3, textvariable=min_v, width=8).pack(side="left")
+        tk.Label(f3, text="to", bg=self._bg, fg=self._fg).pack(side="left", padx=4)
+        ttk.Entry(f3, textvariable=max_v, width=8).pack(side="left")
+        f4 = row("Allowed list"); vals_v = tk.StringVar(value="Yes,No")
+        ttk.Entry(f4, textvariable=vals_v, width=22).pack(side="left")
+        f5 = row("Max length"); len_v = tk.StringVar(value="")
+        ttk.Entry(f5, textvariable=len_v, width=8).pack(side="left")
+        f6 = row("Message"); msg_v = tk.StringVar(value="")
+        ttk.Entry(f6, textvariable=msg_v, width=22).pack(side="left")
+        info = tk.Label(win, text="Rules apply to the current sheet and are checked on entry.",
+                        bg=self._bg, fg=PALETTE["muted"], font=("Segoe UI", 8))
+        info.pack(anchor="w", padx=14, pady=(6, 2))
+        def add_rule():
+            rng = rng_v.get().strip()
+            if not re.match(r"[A-Za-z]+\d+:[A-Za-z]+\d+$", rng):
+                messagebox.showerror(APP, "Range must look like A1:A20", parent=win); return
+            self._sheet_validations().append({
+                "range": rng, "type": typ_v.get(), "min": min_v.get().strip(),
+                "max": max_v.get().strip(), "values": vals_v.get(),
+                "maxlen": len_v.get().strip(), "msg": msg_v.get().strip()})
+            self.status.set(f"Validation added for {rng}")
+            messagebox.showinfo(APP, f"Validation added for {rng}.", parent=win)
+        def clear_rules():
+            self._sheet_validations().clear(); self.status.set("Validations cleared")
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=14)
+        tk.Button(bf, text="Add rule", command=add_rule, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Clear all", command=clear_rules, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+
+    def _sheet_named_dialog(self):
+        win = tk.Toplevel(self); win.title("Named ranges"); win.transient(self)
+        win.geometry("380x330"); win.configure(bg=self._bg)
+        tk.Label(win, text="Named ranges", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(14, 2))
+        tk.Label(win, text="Use a name anywhere in a formula, e.g. =SUM(SALES).",
+                 bg=self._bg, fg=PALETTE["muted"], font=("Segoe UI", 8)).pack(anchor="w", padx=14)
+        lb = tk.Listbox(win, bg=self._surface, fg=self._fg, font=("Consolas", 9), height=8,
+                        selectbackground="#3B82F6", selectforeground="#FFF")
+        lb.pack(fill="both", expand=True, padx=14, pady=8)
+        def refresh():
+            lb.delete(0, "end")
+            for name, rng in self._sheet_named().items():
+                lb.insert("end", f"{name} = {rng}")
+        refresh()
+        f = tk.Frame(win, bg=self._bg); f.pack(fill="x", padx=14)
+        name_v = tk.StringVar(value="SALES"); rng_v = tk.StringVar(value="A1:A10")
+        ttk.Entry(f, textvariable=name_v, width=12).pack(side="left")
+        tk.Label(f, text="=", bg=self._bg, fg=self._fg).pack(side="left", padx=3)
+        ttk.Entry(f, textvariable=rng_v, width=14).pack(side="left")
+        def add_name():
+            name = name_v.get().strip().upper().replace(" ", "_")
+            rng = rng_v.get().strip().upper()
+            if not name or not re.match(r"[A-Z][A-Z0-9_]*$", name):
+                messagebox.showerror(APP, "Name must start with a letter and use letters/digits.", parent=win); return
+            if not re.match(r"[A-Z]+\d+:[A-Z]+\d+$", rng):
+                messagebox.showerror(APP, "Range must look like A1:A10", parent=win); return
+            self._sheet_named()[name] = rng; refresh()
+            self.status.set(f"Named range {name} = {rng}")
+        def del_name():
+            s = lb.curselection()
+            if not s: return
+            name = list(self._sheet_named())[s[0]]
+            self._sheet_named().pop(name, None); refresh()
+        def goto_name():
+            s = lb.curselection()
+            if not s: return
+            rng = list(self._sheet_named().values())[s[0]]
+            m = re.match(r"([A-Z]+)(\d+)", rng)
+            if m:
+                self._sheet_sel = (int(m.group(2))-1, self._col_index(m.group(1)))
+                self._sheet_cell_ref.set(self._sheet_key(*self._sheet_sel))
+                self._sheet_draw(); win.destroy()
+        tk.Button(f, text="Add", command=add_name, bg="#315C8A", fg="white", relief="flat",
+                  font=("Segoe UI", 9, "bold"), padx=8, pady=3).pack(side="left", padx=4)
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=8)
+        tk.Button(bf, text="Go to", command=goto_name, bg="#334155", fg="white", relief="flat",
+                  font=("Segoe UI", 9), padx=10, pady=4).pack(side="left", padx=4)
+        tk.Button(bf, text="Delete", command=del_name, bg="#334155", fg="white", relief="flat",
+                  font=("Segoe UI", 9), padx=10, pady=4).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white", relief="flat",
+                  font=("Segoe UI", 9), padx=10, pady=4).pack(side="left", padx=4)
 
     def _sheet_pivot(self):
         rng = simpledialog.askstring(APP, "Pivot source range (e.g. A1:C100):",
