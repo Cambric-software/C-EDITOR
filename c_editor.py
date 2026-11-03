@@ -938,6 +938,7 @@ class Studio(tk.Tk):
 
         elif dept=="spreadsheet":
             _btn("📊 Chart",self._sheet_chart)
+            _btn("Pivot",self._sheet_pivot)
             _btn("Cond. format",self._sheet_cf_dialog)
             _btn("⇃ Auto-fill",self._sheet_auto_fill)
             _btn("↕ Sort",self._sheet_sort_column)
@@ -7520,6 +7521,68 @@ class Studio(tk.Tk):
         self._sheet_data.update(new_data)
         self._sheet_draw()
         self.status.set(f"Sorted column {self._sheet_key(0,col)[:-1]} {'↑' if asc else '↓'}")
+
+    def _sheet_pivot(self):
+        rng = simpledialog.askstring(APP, "Pivot source range (e.g. A1:C100):",
+                                     initialvalue="A1:C20", parent=self)
+        if not rng: return
+        m = re.match(r"([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)$", rng.strip())
+        if not m:
+            messagebox.showerror(APP, "Invalid range. Use A1:C20", parent=self); return
+        c1 = self._col_index(m.group(1)); r1 = int(m.group(2))-1
+        c2 = self._col_index(m.group(3)); r2 = int(m.group(4))-1
+        c1, c2 = min(c1,c2), max(c1,c2); r1, r2 = min(r1,r2), max(r1,r2)
+        has_header = messagebox.askyesno(APP, "Does the first row contain column headers?", parent=self)
+        start = r1 + (1 if has_header else 0)
+        headers = []
+        for c in range(c1,c2+1):
+            headers.append(str(self._sheet_data.get(self._sheet_key(r1,c),{}).get("value","")) or f"Column {c-c1+1}")
+        row_field = simpledialog.askinteger(APP,
+            "Row field number (1 = " + headers[0] + "):", initialvalue=1,
+            minvalue=1, maxvalue=len(headers), parent=self)
+        if row_field is None: return
+        val_field = simpledialog.askinteger(APP,
+            "Value field number (1 = " + headers[0] + "):",
+            initialvalue=min(2,len(headers)), minvalue=1, maxvalue=len(headers), parent=self)
+        if val_field is None: return
+        agg = (simpledialog.askstring(APP, "Aggregation: sum / average / count",
+                                      initialvalue="sum", parent=self) or "sum").strip().lower()
+        if agg not in ("sum","average","avg","count"):
+            messagebox.showerror(APP, "Use sum, average or count.", parent=self); return
+        groups = {}
+        for r in range(start, r2+1):
+            label = str(self._sheet_data.get(self._sheet_key(r,c1+row_field-1),{}).get("value",""))
+            if label == "": label = "(blank)"
+            raw = str(self._sheet_data.get(self._sheet_key(r,c1+val_field-1),{}).get("value",""))
+            try: num = float(raw)
+            except Exception: num = None
+            g = groups.setdefault(label, {"sum":0.0,"n":0,"count":0})
+            if num is not None:
+                g["sum"] += num; g["n"] += 1
+            if raw != "": g["count"] += 1
+        data = {"A1":{"value":"Row"},"B1":{"value":(agg.capitalize()+" of "+headers[val_field-1])}}
+        total = 0.0; total_n = 0; total_count = 0
+        for i,(label,g) in enumerate(sorted(groups.items(), key=lambda kv: str(kv[0]).lower()), start=2):
+            if agg == "count": out = g["count"]
+            elif agg in ("average","avg"): out = g["sum"]/g["n"] if g["n"] else 0
+            else: out = g["sum"]
+            total += g["sum"]; total_n += g["n"]; total_count += g["count"]
+            data[self._sheet_key(i-1,0)] = {"value": label}
+            data[self._sheet_key(i-1,1)] = {"value": str(int(out) if isinstance(out,float) and out==int(out) else round(out,4))}
+        if agg == "count": grand = total_count
+        elif agg in ("average","avg"): grand = total/total_n if total_n else 0
+        else: grand = total
+        last = len(groups)+2
+        data[self._sheet_key(last-1,0)] = {"value":"Grand Total"}
+        data[self._sheet_key(last-1,1)] = {"value": str(int(grand) if isinstance(grand,float) and grand==int(grand) else round(grand,4))}
+        if not hasattr(self,"_sheet_tabs"):
+            self._sheet_tabs=[{"name":"Sheet 1","data":{}}]; self._sheet_tab_idx=0
+        self._sheet_tabs[self._sheet_tab_idx]["data"] = dict(self._sheet_data)
+        self._sheet_tabs.append({"name":f"Pivot {len(self._sheet_tabs)}","data":data})
+        self._sheet_tab_idx = len(self._sheet_tabs)-1
+        self._sheet_data.clear(); self._sheet_data.update(data)
+        self._sheet_draw(); self._sheet_refresh_tabs()
+        self.status.set("Pivot table created")
 
     def _sheet_add_sheet(self):
         """Add a new sheet tab."""
