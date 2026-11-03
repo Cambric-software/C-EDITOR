@@ -390,6 +390,7 @@ class Studio(tk.Tk):
             "presentation_seconds":4,
         }
         self._load_prefs()
+        self.track_changes = False
 
         # logo
         try:
@@ -769,6 +770,10 @@ class Studio(tk.Tk):
             _sep()
             _btn("↩ Undo",self._undo)
             _btn("↪ Redo",self._redo)
+            _sep()
+            self._tc_btn = _btn("Track changes", self._toggle_track_changes)
+            _btn("Accept all", self._accept_all_changes)
+            _btn("Reject all", self._reject_all_changes)
             _sep()
             self.family=tk.StringVar(value="Segoe UI")
             self.fsize=tk.IntVar(value=12)
@@ -1267,6 +1272,8 @@ class Studio(tk.Tk):
         self.editor.bind("<Control-u>",lambda e:self._tag("under"))
         self.editor.bind("<Control-h>",lambda e:self._find_replace())
         self.editor.bind("<Control-s>",lambda e:self._save())
+        self.editor.bind("<Delete>", self._tc_delete)
+        self.editor.bind("<BackSpace>", self._tc_backspace)
 
         # drawing overlay
         self.drawing=tk.Canvas(self.paper,highlightthickness=0,bg="white")
@@ -2315,8 +2322,76 @@ class Studio(tk.Tk):
         for t in self.editor.tag_names(): self.editor.tag_remove(t,a,b)
         self._dirt(); self._snapshot()
 
+    def _toggle_track_changes(self):
+        self.track_changes = not self.track_changes
+        if hasattr(self, "_tc_btn"):
+            self._tc_btn.configure(text="Track changes ON" if self.track_changes else "Track changes")
+        self.editor.tag_configure("tc_insert", foreground="#16A34A", underline=True)
+        self.editor.tag_configure("tc_delete", foreground="#DC2626", overstrike=True)
+        self.status.set("Track changes " + ("ON" if self.track_changes else "OFF"))
+
+    def _tc_delete(self, e=None):
+        if not getattr(self, "track_changes", False):
+            return  # let default delete happen
+        try:
+            sel = self.editor.tag_ranges("sel")
+            if sel:
+                a, b = sel[0], sel[1]
+            else:
+                a = self.editor.index("insert")
+                b = self.editor.index("insert+1c")
+        except Exception:
+            return
+        txt = self.editor.get(a, b)
+        if not txt:
+            return "break"
+        # mark as deleted instead of removing
+        self.editor.tag_add("tc_delete", a, b)
+        return "break"
+
+    def _tc_backspace(self, e=None):
+        if not getattr(self, "track_changes", False):
+            return
+        try:
+            sel = self.editor.tag_ranges("sel")
+            if sel:
+                a, b = sel[0], sel[1]
+            else:
+                a = self.editor.index("insert-1c")
+                b = self.editor.index("insert")
+        except Exception:
+            return
+        txt = self.editor.get(a, b)
+        if not txt:
+            return "break"
+        self.editor.tag_add("tc_delete", a, b)
+        return "break"
+
+    def _accept_all_changes(self):
+        ranges = self.editor.tag_ranges("tc_delete")
+        for i in range(len(ranges) - 1, -1, -2):
+            self.editor.delete(ranges[i-1], ranges[i])
+        self.editor.tag_remove("tc_insert", "1.0", "end")
+        self.track_changes = False
+        if hasattr(self, "_tc_btn"): self._tc_btn.configure(text="Track changes")
+        self._dirt(); self._snapshot()
+        self.status.set("All changes accepted.")
+
+    def _reject_all_changes(self):
+        ranges = self.editor.tag_ranges("tc_insert")
+        for i in range(len(ranges) - 1, -1, -2):
+            self.editor.delete(ranges[i-1], ranges[i])
+        self.editor.tag_remove("tc_delete", "1.0", "end")
+        self.track_changes = False
+        if hasattr(self, "_tc_btn"): self._tc_btn.configure(text="Track changes")
+        self._dirt(); self._snapshot()
+        self.status.set("All changes rejected.")
+
     def _insert(self,text:str):
-        self.editor.insert("insert",text); self.editor.focus_set()
+        self.editor.insert("insert", text)
+        if getattr(self, "track_changes", False):
+            self.editor.tag_add("tc_insert", "insert-%dc" % len(text), "insert")
+        self.editor.focus_set()
         self._store(); self._dirt(); self._snapshot()
 
     def _heading(self):
