@@ -397,6 +397,8 @@ class Studio(tk.Tk):
         }
         self._load_prefs()
         self.track_changes = False
+        self._bookmarks = {}
+        self._endnote_counter = 0
 
         # logo
         try:
@@ -1108,7 +1110,9 @@ class Studio(tk.Tk):
         ])
         _sub("Insert",[
             ("Page break",self._add_page),("Image…",self._image),
-            ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Footnote...",self._doc_footnote),("Checklist",self._checklist),
+            ("Table…",self._table),("Table of Contents",self._doc_toc),("Mail merge...",self._doc_mail_merge),("Footnote...",self._doc_footnote),("Endnote...",self._doc_endnote),
+            ("Bookmark...",self._doc_bookmark),("Go to bookmark...",self._doc_goto_bookmark),
+            ("Checklist",self._checklist),
             ("Flashcard",self._flashcard),("Equation",self._equation),
             ("Answer lines…",self._answer_lines),
             ("Horizontal rule",lambda:self._insert("\n─────────────────────────────────\n")),
@@ -2560,6 +2564,64 @@ class Studio(tk.Tk):
             pass
         self._dirt(); self._snapshot()
         self.status.set("Footnote " + marker + " added.")
+
+    def _doc_endnote(self):
+        txt = simpledialog.askstring(APP, "Endnote text:", parent=self)
+        if not txt: return
+        self._endnote_counter = getattr(self, "_endnote_counter", 0) + 1
+        marker = str(self._endnote_counter)
+        a, b = self._selected()
+        pos = a if a else self.editor.index("insert")
+        self.editor.insert(pos, marker)
+        try:
+            self.editor.tag_add("sup", pos, pos + ("+" + str(len(marker)) + "c"))
+            self.editor.tag_configure("sup", font=("Segoe UI", 8), offset=6)
+        except Exception:
+            pass
+        end = self.editor.index("end-1c")
+        body = self.editor.get("1.0", "end-1c")
+        if "\n\nEndnotes\n--------\n" not in body:
+            self.editor.insert(end, "\n\nEndnotes\n--------\n")
+            end = self.editor.index("end-1c")
+        self.editor.insert(end, marker + "  " + txt + "\n")
+        self._dirt(); self._snapshot()
+        self.status.set("Endnote " + marker + " added.")
+
+    def _doc_bookmark(self):
+        name = simpledialog.askstring(APP, "Bookmark name:", parent=self)
+        if not name: return
+        a, b = self._selected()
+        pos = a if a else self.editor.index("insert")
+        self._bookmarks[name.strip()] = pos
+        self.status.set(f"Bookmark '{name.strip()}' set")
+
+    def _doc_goto_bookmark(self):
+        if not self._bookmarks:
+            messagebox.showinfo(APP, "No bookmarks yet.", parent=self); return
+        win = tk.Toplevel(self); win.title("Bookmarks"); win.transient(self)
+        win.geometry("320x300")
+        lb = tk.Listbox(win, bg=self._surface, fg=self._fg, font=("Segoe UI", 10),
+                        selectbackground="#3B82F6", selectforeground="#FFF")
+        lb.pack(fill="both", expand=True, padx=8, pady=8)
+        for name, pos in self._bookmarks.items():
+            lb.insert("end", f"{name}  ({pos})")
+        def go(e=None):
+            s = lb.curselection()
+            if not s: return
+            name = list(self._bookmarks)[s[0]]
+            pos = self._bookmarks[name]
+            try:
+                self.editor.mark_set("insert", pos)
+                self.editor.see(pos)
+                self.editor.focus_set()
+            except Exception:
+                pass
+            win.destroy()
+        lb.bind("<Double-Button-1>", go)
+        tk.Button(win, text="Go to", command=go, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), pady=4).pack(pady=4)
+        tk.Button(win, text="Delete", command=lambda: (self._bookmarks.pop(list(self._bookmarks)[lb.curselection()[0]], None) if lb.curselection() else None, win.destroy()),
+                  bg="#334155", fg="white", relief="flat", font=("Segoe UI", 9), pady=4).pack(pady=4)
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
