@@ -1898,11 +1898,12 @@ class Studio(tk.Tk):
                   font=("Segoe UI",9,"bold")).pack(anchor="w",padx=8,pady=(8,4))
         self._anim_tool=tk.StringVar(value="Brush")
         TOOL_ICONS = {
-        "Select":"↖","Brush":"🖌","Pencil":"✏️","Line":"╱",
-            "Rectangle":"▭","Ellipse":"◯","Fill":"🪣","Text":"T","Eraser":"⌫"
+        "Select":"S","Brush":"B","Pencil":"P","Line":"L",
+            "Rectangle":"R","Ellipse":"E","Star":"*","Polygon":"P",
+            "Arrow":"->","RoundRect":"RR","Fill":"F","Text":"T","Eraser":"X"
         }
         tools_grid=tk.Frame(tool_tab,bg=ABG); tools_grid.pack(fill="x",padx=6,pady=(0,4))
-        for i,t in enumerate(("Select","Brush","Pencil","Line","Rectangle","Ellipse","Fill","Text","Eraser")):
+        for i,t in enumerate(("Select","Brush","Pencil","Line","Rectangle","Ellipse","Star","Polygon","Arrow","RoundRect","Fill","Text","Eraser")):
             icon=TOOL_ICONS.get(t,"•")
             cell=tk.Frame(tools_grid,bg=ABGB,relief="flat",bd=0,cursor="hand2")
             cell.grid(row=i//3,column=i%3,padx=2,pady=2,sticky="ew")
@@ -1935,6 +1936,8 @@ class Studio(tk.Tk):
         ttk.Spinbox(bc,from_=0.05,to=1.0,increment=0.05,textvariable=self._anim_opacity,width=5).grid(row=1,column=1,sticky="ew",pady=1)
         self._anim_smooth=tk.BooleanVar(value=True)
         ttk.Checkbutton(bc,text="Smooth",variable=self._anim_smooth).grid(row=2,column=0,columnspan=2,sticky="w",pady=2)
+        self._anim_fill=tk.BooleanVar(value=False)
+        ttk.Checkbutton(bc,text="Filled shapes",variable=self._anim_fill).grid(row=3,column=0,columnspan=2,sticky="w",pady=2)
 
         tk.Frame(tool_tab,bg=ABGB,height=1).pack(fill="x",padx=8,pady=4)
 
@@ -4551,6 +4554,24 @@ class Studio(tk.Tk):
             if layer.get("visible",True):
                 self._anim_paint_layer(c,fi,ox,oy,layer,ghost_color)
 
+    def _anim_shape_pts(self,t,x0,y0,x1,y1):
+        import math as _m
+        cx,cy=(x0+x1)/2,(y0+y1)/2; rx,ry=abs(x1-x0)/2,abs(y1-y0)/2
+        if t=="Star":
+            pts=[]
+            for i in range(10):
+                ang=_m.radians(i*36-90); r=rx if i%2==0 else rx*0.42
+                rr=ry if i%2==0 else ry*0.42
+                pts.append((cx+_m.cos(ang)*r,cy+_m.sin(ang)*rr))
+            return pts
+        if t=="Polygon":
+            n=6; pts=[]
+            for i in range(n):
+                ang=_m.radians(i*360/n-90)
+                pts.append((cx+_m.cos(ang)*rx,cy+_m.sin(ang)*ry))
+            return pts
+        return [(x0,y0),(x1,y0),(x1,y1),(x0,y1)]
+
     def _anim_paint_layer(self,c,fi,ox,oy,layer,ghost_color):
         z=self._anim_zoom
         for op in layer["frames"].get(str(fi),[]):
@@ -4563,8 +4584,20 @@ class Studio(tk.Tk):
                 else:
                     r=max(1,w//2); x,y=pts[0]; c.create_oval(x-r,y-r,x+r,y+r,fill=color,outline="")
             elif t=="Line" and len(pts)>=2: c.create_line(*pts[0],*pts[-1],fill=color,width=w)
-            elif t=="Rectangle" and len(pts)>=2: c.create_rectangle(*pts[0],*pts[-1],outline=color,width=w)
-            elif t=="Ellipse" and len(pts)>=2: c.create_oval(*pts[0],*pts[-1],outline=color,width=w)
+            elif t=="Arrow" and len(pts)>=2: c.create_line(*pts[0],*pts[-1],fill=color,width=w,arrow="last",arrowshape=(12,14,5))
+            elif t=="Rectangle" and len(pts)>=2:
+                c.create_rectangle(*pts[0],*pts[-1],fill=color if op.get("filled") else "",outline=color,width=w)
+            elif t=="Ellipse" and len(pts)>=2:
+                c.create_oval(*pts[0],*pts[-1],fill=color if op.get("filled") else "",outline=color,width=w)
+            elif t in ("Star","Polygon") and len(pts)>=2:
+                poly=self._anim_shape_pts(t,*pts[0],*pts[-1])
+                c.create_polygon(*[v for p in poly for v in p],fill=color if op.get("filled") else "",outline=color,width=w)
+            elif t=="RoundRect" and len(pts)>=2:
+                x0,y0=pts[0]; x1,y1=pts[-1]; r=min(28,abs(x1-x0)//4,abs(y1-y0)//4)
+                rp=[(min(x0,x1)+r,min(y0,y1)),(max(x0,x1)-r,min(y0,y1)),(max(x0,x1),min(y0,y1)),(max(x0,x1),min(y0,y1)+r),
+                    (max(x0,x1),max(y0,y1)-r),(max(x0,x1),max(y0,y1)),(max(x0,x1)-r,max(y0,y1)),(min(x0,x1)+r,max(y0,y1)),
+                    (min(x0,x1),max(y0,y1)),(min(x0,x1),max(y0,y1)-r),(min(x0,x1),min(y0,y1)+r),(min(x0,x1),min(y0,y1))]
+                c.create_polygon(*[v for p in rp for v in p],fill=color if op.get("filled") else "",outline=color,width=w,smooth=True)
             elif t=="Fill" and pts:
                 r=int(80*z); x,y=pts[0]; c.create_oval(x-r,y-r,x+r,y+r,fill=color,outline="")
             elif t=="Text" and pts:
@@ -4673,7 +4706,8 @@ class Studio(tk.Tk):
         elif t not in ("Select","Text","Fill"):
             pts=self._anim_cur_pts if t in ("Brush","Pencil") else [self._anim_start_pt,pt]
             self._anim_get_ops().append({"tool":t,"pts":pts,"color":self._anim_color,
-                                          "width":self._anim_brush.get(),"smooth":self._anim_smooth.get(),"opacity":self._anim_opacity.get()})
+                                          "width":self._anim_brush.get(),"smooth":self._anim_smooth.get(),
+                                          "opacity":self._anim_opacity.get(),"filled":self._anim_fill.get()})
         self._anim_start_pt=None; self._anim_cur_pts=[]; self._anim_redraw()
 
     def _anim_pick_color(self):
@@ -4804,27 +4838,50 @@ class Studio(tk.Tk):
         from PIL import Image,ImageDraw as PD,ImageFont
         pw=self._anim_project["width"]; ph=self._anim_project["height"]
         bg=self._anim_project.get("background","#FFFFFF")
-        im=Image.new("RGBA",(pw,ph),bg); d=PD.Draw(im)
+        base=Image.new("RGBA",(pw,ph),bg)
         for layer in self._anim_project["layers"]:
             if not layer.get("visible",True): continue
+            limg=Image.new("RGBA",(pw,ph),(0,0,0,0)); d=PD.Draw(limg)
             for op in layer["frames"].get(str(fi),[]):
                 pts=[(int(x),int(y)) for x,y in op.get("pts",[])]
                 t=op.get("tool","Brush"); col=op.get("color","#000"); w=max(1,op.get("width",3))
                 if not pts: continue
+                filled=bool(op.get("filled"))
                 if t in ("Brush","Pencil"):
                     if len(pts)>=2: d.line(pts,fill=col,width=w,joint="curve")
                     else:
                         r=max(1,w//2); x,y=pts[0]; d.ellipse((x-r,y-r,x+r,y+r),fill=col)
                 elif t=="Line" and len(pts)>=2: d.line([pts[0],pts[-1]],fill=col,width=w)
-                elif t=="Rectangle" and len(pts)>=2: d.rectangle([pts[0],pts[-1]],outline=col,width=w)
-                elif t=="Ellipse" and len(pts)>=2: d.ellipse([pts[0],pts[-1]],outline=col,width=w)
+                elif t=="Arrow" and len(pts)>=2:
+                    d.line([pts[0],pts[-1]],fill=col,width=w)
+                    import math as _m
+                    ang=_m.atan2(pts[-1][1]-pts[0][1],pts[-1][0]-pts[0][0]); L=18
+                    for da in (-0.5,0.5):
+                        d.line([pts[-1],(pts[-1][0]-L*_m.cos(ang+da),pts[-1][1]-L*_m.sin(ang+da))],fill=col,width=w)
+                elif t=="Rectangle" and len(pts)>=2:
+                    d.rectangle([pts[0],pts[-1]],fill=col if filled else None,outline=col,width=w)
+                elif t=="Ellipse" and len(pts)>=2:
+                    d.ellipse([pts[0],pts[-1]],fill=col if filled else None,outline=col,width=w)
+                elif t in ("Star","Polygon") and len(pts)>=2:
+                    poly=self._anim_shape_pts(t,*pts[0],*pts[-1])
+                    d.polygon(poly,fill=col if filled else None,outline=col,width=w)
+                elif t=="RoundRect" and len(pts)>=2:
+                    x0,y0=pts[0]; x1,y1=pts[-1]
+                    rr=max(0,min(28,abs(x1-x0)//4,abs(y1-y0)//4))
+                    d.rounded_rectangle([min(x0,x1),min(y0,y1),max(x0,x1),max(y0,y1)],
+                                        radius=rr,fill=col if filled else None,outline=col,width=w)
                 elif t=="Fill" and pts:
                     r=80; x,y=pts[0]; d.ellipse((x-r,y-r,x+r,y+r),fill=col)
                 elif t=="Text" and pts:
                     try: fnt=ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf",max(12,w*4))
                     except: fnt=ImageFont.load_default()
                     d.text(pts[0],op.get("text",""),fill=col,font=fnt)
-        return im.convert("RGB")
+            opac=max(0.0,min(1.0,float(layer.get("opacity",1.0) or 1.0)))
+            if opac<1.0:
+                a=limg.getchannel("A").point(lambda v:int(v*opac))
+                limg.putalpha(a)
+            base.alpha_composite(limg)
+        return base.convert("RGB")
 
     def _anim_export_gif(self):
         try: from PIL import Image
