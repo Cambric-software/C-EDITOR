@@ -183,6 +183,7 @@ class DesignObject:
     text_color: str   = "#FFFFFF"
     image_path: str   = ""
     locked:     bool  = False
+    group:      str   = ""
     id:         str   = field(default_factory=new_id)
 
 @dataclass
@@ -348,6 +349,8 @@ class Studio(tk.Tk):
         self.design_proj  = DesignProject()
         self.design_page  = 0
         self._sel_obj:    Optional[DesignObject] = None
+        self._selection:  List[DesignObject] = []
+        self._drag_origins: dict = {}
         self._drag_start: Optional[tuple] = None
         self._drag_orig:  Optional[tuple] = None
 
@@ -911,6 +914,10 @@ class Studio(tk.Tk):
             _btn("Delete",    self._design_delete, "danger")
             _btn("Up layer",  lambda: self._design_reorder(-1))
             _btn("Down layer",lambda: self._design_reorder(1))
+            _btn("Layers", self._design_layers)
+            _btn("Lock", self._design_toggle_lock)
+            _btn("Group", self._design_group)
+            _btn("Ungroup", self._design_ungroup)
             _sep()
             for t,fn in [("Align L",lambda:self._design_align("left")),
                           ("Align C",lambda:self._design_align("center")),
@@ -2832,9 +2839,11 @@ class Studio(tk.Tk):
                     c.create_text((x0+x1)//2,(y0+y1)//2,text=Path(obj.image_path).name[:20],fill="#666")
             if getattr(obj, "locked", False):
                 c.create_text(x0+4, y0+4, text="L", anchor="nw", font=("Segoe UI", 9, "bold"), fill="#F59E0B")
-            if obj is self._sel_obj:
-                c.create_rectangle(x0-3,y0-3,x1+3,y1+3,outline="#F59E0B",width=2,dash=(5,3))
-                c.create_rectangle(x1-5,y1-5,x1+5,y1+5,fill="#F59E0B",outline="")
+            if self._is_selected(obj):
+                col = "#F59E0B" if obj is self._sel_obj else "#38BDF8"
+                c.create_rectangle(x0-3,y0-3,x1+3,y1+3,outline=col,width=2,dash=(5,3))
+                if obj is self._sel_obj:
+                    c.create_rectangle(x1-5,y1-5,x1+5,y1+5,fill=col,outline="")
 
     def _dc_hit(self,mx,my)->Optional[DesignObject]:
         pg=self._dp()
@@ -2845,24 +2854,49 @@ class Studio(tk.Tk):
             if obj.x<=px<=obj.x+obj.w and obj.y<=py<=obj.y+obj.h: return obj
         return None
 
+    def _is_selected(self,obj)->bool:
+        return obj is self._sel_obj or any(o is obj for o in getattr(self,"_selection",[]))
+
     def _dc_down(self,e):
-        self._sel_obj=self._dc_hit(e.x,e.y); self._drag_start=(e.x,e.y)
+        hit=self._dc_hit(e.x,e.y)
+        additive=bool(e.state & 0x0005)  # Shift or Ctrl
+        if hit is None:
+            if not additive:
+                self._sel_obj=None; self._selection=[]
+        elif additive:
+            if any(o is hit for o in self._selection):
+                self._selection=[o for o in self._selection if o is not hit]
+                self._sel_obj=self._selection[-1] if self._selection else None
+            else:
+                self._selection.append(hit); self._sel_obj=hit
+        else:
+            if getattr(hit,"group",""):
+                pg=self._dp()
+                self._selection=[o for o in (pg.objects if pg else []) if getattr(o,"group","")==hit.group]
+            else:
+                self._selection=[hit]
+            self._sel_obj=hit
+        self._drag_start=(e.x,e.y)
         self._drag_orig=(self._sel_obj.x,self._sel_obj.y) if self._sel_obj else (0,0)
+        self._drag_origins={id(o):(o.x,o.y) for o in self._selection}
         self._drag_guides=[]
         if self._sel_obj: self._dp_load_obj(self._sel_obj)
         self._dc_redraw()
 
     def _dc_drag(self,e):
-        if self._sel_obj is None or self._drag_start is None: return
-        if getattr(self._sel_obj, "locked", False): return
+        if not self._selection or self._drag_start is None: return
         dx=e.x-self._drag_start[0]; dy=e.y-self._drag_start[1]
         scale=getattr(self,"_dc_scale",1.0)
-        nx=self._drag_orig[0]+dx/scale
-        ny=self._drag_orig[1]+dy/scale
-        if getattr(self,"_design_snap",False):
-            gs=20; nx=round(nx/gs)*gs; ny=round(ny/gs)*gs
-        self._sel_obj.x=nx
-        self._sel_obj.y=ny
+        for o in self._selection:
+            if getattr(o,"locked",False): continue
+            ox,oy=self._drag_origins.get(id(o),(o.x,o.y))
+            nx=ox+dx/scale; ny=oy+dy/scale
+            if getattr(self,"_design_snap",False):
+                gs=20; nx=round(nx/gs)*gs; ny=round(ny/gs)*gs
+            o.x=nx; o.y=ny
+        if self._sel_obj is None: return
+        self._sel_obj.x=min(max(self._sel_obj.x,0),max(0,self.design_proj.width-self._sel_obj.w))
+        self._sel_obj.y=min(max(self._sel_obj.y,0),max(0,self.design_proj.height-self._sel_obj.h))
         # alignment guides
         self._drag_guides=[]
         pg=self._dp()
@@ -2871,7 +2905,7 @@ class Studio(tk.Tk):
             sw,sh=self._sel_obj.w,self._sel_obj.h
             scx,sy_c=sx+sw/2, sy+sh/2
             for o in pg.objects:
-                if o is self._sel_obj: continue
+                if self._is_selected(o): continue
                 ox,oy,ow,oh=o.x,o.y,o.w,o.h
                 ocx,ocy=ox+ow/2, oy+oh/2
                 # vertical alignment (centers or edges)
@@ -2939,16 +2973,28 @@ class Studio(tk.Tk):
         pg.objects.append(obj); self._sel_obj=obj; self._dc_redraw()
 
     def _design_duplicate(self):
-        if self._sel_obj:
-            pg=self._dp(); new=copy.deepcopy(self._sel_obj)
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        pg=self._dp()
+        if pg is None: return
+        copies=[]; group_map={}
+        for old in src:
+            new=copy.deepcopy(old)
             new.id=new_id(); new.x+=20; new.y+=20
-            pg.objects.append(new); self._sel_obj=new; self._dc_redraw()
+            if getattr(old,"group",""):
+                group_map.setdefault(old.group,new_id())
+                new.group=group_map[old.group]
+            pg.objects.append(new); copies.append(new)
+        self._selection=copies; self._sel_obj=copies[-1]
+        self._dc_redraw()
 
     def _design_delete(self):
-        if self._sel_obj:
-            pg=self._dp()
-            pg.objects=[o for o in pg.objects if o is not self._sel_obj]
-            self._sel_obj=None; self._dc_redraw()
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        pg=self._dp()
+        if pg is None: return
+        pg.objects=[o for o in pg.objects if not any(o is s for s in src)]
+        self._selection=[]; self._sel_obj=None; self._dc_redraw()
 
     def _design_layers(self):
         win = tk.Toplevel(self); win.title("Layers"); win.transient(self)
@@ -2982,7 +3028,12 @@ class Studio(tk.Tk):
             if not s: return
             pg = self._dp()
             if pg and 0 <= s[0] < len(pg.objects):
-                self._sel_obj = pg.objects[s[0]]
+                obj = pg.objects[s[0]]
+                self._sel_obj = obj
+                if getattr(obj, "group", ""):
+                    self._selection = [o for o in pg.objects if getattr(o, "group", "") == obj.group]
+                else:
+                    self._selection = [obj]
                 self._dc_redraw()
 
         def _toggle():
@@ -3033,35 +3084,61 @@ class Studio(tk.Tk):
         tk.Button(outer, text="Close", command=win.destroy).pack(pady=(8, 0))
 
     def _design_toggle_lock(self):
-        if self._sel_obj is None: return
-        self._sel_obj.locked = not getattr(self._sel_obj, "locked", False)
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        state=not getattr(src[0],"locked",False)
+        for o in src: o.locked=state
         self._dc_redraw()
-        self.status.set("Locked" if self._sel_obj.locked else "Unlocked")
+        self.status.set(("Locked " if state else "Unlocked ") + str(len(src)) + " object(s)")
+
+    def _design_group(self):
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if len(src)<2:
+            messagebox.showinfo(APP,"Select two or more objects first (Shift/Ctrl+click).",parent=self); return
+        gid=new_id()
+        for o in src: o.group=gid
+        self._selection=src
+        self._dc_redraw(); self.status.set(f"Grouped {len(src)} objects")
+
+    def _design_ungroup(self):
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        for o in src: o.group=""
+        self._dc_redraw(); self.status.set(f"Ungrouped {len(src)} objects")
 
     def _design_reorder(self,d:int):
-        if self._sel_obj is None: return
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
         pg=self._dp(); objs=pg.objects
-        i=next((i for i,o in enumerate(objs) if o is self._sel_obj),None)
-        if i is None: return
-        j=i+d
-        if 0<=j<len(objs): objs[i],objs[j]=objs[j],objs[i]; self._dc_redraw()
+        order=sorted(src,key=lambda o: objs.index(o),reverse=(d>0))
+        moved=False
+        for o in order:
+            i=objs.index(o); j=i+d
+            if 0<=j<len(objs) and not any(objs[j] is s for s in src):
+                objs[i],objs[j]=objs[j],objs[i]; moved=True
+        if moved: self._dc_redraw()
 
     def _design_align(self,where:str):
-        if self._sel_obj is None: return
-        pw=self.design_proj.width; ph=self.design_proj.height; obj=self._sel_obj
-        if where=="left":   obj.x=0
-        elif where=="center": obj.x=(pw-obj.w)/2
-        elif where=="right":  obj.x=pw-obj.w
-        elif where=="top":    obj.y=0
-        elif where=="middle": obj.y=(ph-obj.h)/2
-        elif where=="bottom": obj.y=ph-obj.h
+        src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
+        if not src: return
+        pw=self.design_proj.width; ph=self.design_proj.height
+        minx=min(o.x for o in src); maxx=max(o.x+o.w for o in src)
+        miny=min(o.y for o in src); maxy=max(o.y+o.h for o in src)
+        dx=dy=0
+        if where=="left":   dx=-minx
+        elif where=="center": dx=(pw-(maxx-minx))/2-minx
+        elif where=="right":  dx=pw-maxx
+        elif where=="top":    dy=-miny
+        elif where=="middle": dy=(ph-(maxy-miny))/2-miny
+        elif where=="bottom": dy=ph-maxy
+        for o in src: o.x+=dx; o.y+=dy
         self._dc_redraw()
 
     def _design_resize(self,w:int,h:int):
         self.design_proj.width=w; self.design_proj.height=h; self._dc_redraw()
 
     def _design_new(self):
-        self.design_proj=DesignProject(); self.design_page=0; self._sel_obj=None; self._dc_redraw()
+        self.design_proj=DesignProject(); self.design_page=0; self._sel_obj=None; self._selection=[]; self._dc_redraw()
 
     def _design_save(self):
         p=filedialog.asksaveasfilename(parent=self,defaultextension=".json",
@@ -7298,7 +7375,7 @@ class Studio(tk.Tk):
         self._design_redo.append(_copy.deepcopy(pg))
         snap=self._design_undo.pop()
         pg.objects=snap.objects; pg.background=snap.background
-        self._sel_obj=None; self._dc_redraw()
+        self._sel_obj=None; self._selection=[]; self._dc_redraw()
         self.status.set("Design undone")
 
     def _design_redo_action(self):
@@ -7310,7 +7387,7 @@ class Studio(tk.Tk):
         self._design_undo.append(_copy.deepcopy(pg))
         snap=self._design_redo.pop()
         pg.objects=snap.objects; pg.background=snap.background
-        self._sel_obj=None; self._dc_redraw()
+        self._sel_obj=None; self._selection=[]; self._dc_redraw()
         self.status.set("Design redone")
 
     def _design_snap_toggle(self):
