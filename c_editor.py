@@ -1166,6 +1166,7 @@ class Studio(tk.Tk):
             ("Translate whole page…",self._translate_page),
             ("Arabic diacritics…",self._diacritics),
             ("Auto-correct",self._auto_correct),("Proofread...",self._doc_proofread),
+            ("Compare with document...",self._doc_compare),
             ("Find & Replace…",self._find_replace),
             ("Word count",self._words),("Read aloud",self._read_aloud),
             ("✨ AI Writing Assistant…",self._ai_assistant),
@@ -2774,6 +2775,57 @@ class Studio(tk.Tk):
                f"Sentences: {sentences:,}\n"
                f"Reading time: about {read_min} minute(s)")
         messagebox.showinfo(APP, msg, parent=self)
+
+    def _doc_compare(self):
+        import difflib
+        p = filedialog.askopenfilename(parent=self, title="Compare with",
+            filetypes=[("Documents", "*.hds *.json *.txt *.md"), ("All files", "*.*")])
+        if not p: return
+        try:
+            raw = Path(p).read_text(encoding="utf-8")
+            if Path(p).suffix.lower() in (".hds", ".json"):
+                data = json.loads(raw)
+                other = "\n\n".join(pg.get("text", "") for pg in data.get("pages", []))
+            else:
+                other = raw
+        except Exception as exc:
+            messagebox.showerror(APP, str(exc), parent=self); return
+        self._store()
+        mine = "\n\n".join(pg.text for pg in self.doc.pages)
+        diff = list(difflib.unified_diff(
+            other.splitlines(), mine.splitlines(),
+            fromfile=Path(p).name, tofile=self.doc.title or "Current document", lineterm=""))
+        win = tk.Toplevel(self); win.title("Compare documents"); win.transient(self)
+        win.geometry("820x560")
+        tk.Label(win, text=f"{len(diff)} difference line(s) vs {Path(p).name}",
+                 bg=self._bg, fg=self._fg, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=12, pady=(10, 4))
+        outer = tk.Frame(win); outer.pack(fill="both", expand=True, padx=10, pady=4)
+        box = tk.Text(outer, wrap="none", font=("Consolas", 9), bg="#0F172A", fg="#E2E8F0",
+                      insertbackground="#E2E8F0")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=box.yview)
+        box.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y"); box.pack(side="left", fill="both", expand=True)
+        box.tag_configure("add", foreground="#4ADE80")
+        box.tag_configure("del", foreground="#F87171")
+        box.tag_configure("hunk", foreground="#60A5FA")
+        for line in diff:
+            tag = ""
+            if line.startswith("+"): tag = "add"
+            elif line.startswith("-"): tag = "del"
+            elif line.startswith("@@"): tag = "hunk"
+            box.insert("end", line + "\n", tag)
+        box.configure(state="disabled")
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=8)
+        def copy_report():
+            q = filedialog.asksaveasfilename(parent=win, defaultextension=".txt",
+                                             filetypes=[("Text", "*.txt")])
+            if q:
+                Path(q).write_text("\n".join(diff), encoding="utf-8")
+                self.status.set(f"Comparison saved: {Path(q).name}")
+        tk.Button(bf, text="Save report", command=copy_report, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
 
     def _table(self):
         r=simpledialog.askinteger(APP,"Rows",initialvalue=3,minvalue=1,maxvalue=30,parent=self)
