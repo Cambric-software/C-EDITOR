@@ -973,6 +973,7 @@ class Studio(tk.Tk):
 
         elif dept=="slides":
             _btn("🎨 Themes",self._slide_theme_gallery)
+            _btn("Master",self._slide_master_dialog)
             _btn("🖼 Image",self._slide_add_image)
             _btn("📺 Presenter",self._present_with_notes,"accent")
             _sep()
@@ -4154,8 +4155,44 @@ class Studio(tk.Tk):
         s=self.slide_lb.curselection()
         if s: self._cur_slide=s[0]; self._slide_redraw()
 
+    def _slide_master_dialog(self):
+        win = tk.Toplevel(self); win.title("Slide master"); win.transient(self)
+        win.geometry("360x220"); win.configure(bg=self._bg)
+        base = getattr(self, "_slide_master", None) or self._slides[0]
+        bg_v = tk.StringVar(value=base.get("background", "#1E2D40"))
+        ac_v = tk.StringVar(value=base.get("accent", "#3B82F6"))
+        tk.Label(win, text="Master background + accent", bg=self._bg, fg=self._fg,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=16, pady=(14,8))
+        for label, var in (("Background", bg_v), ("Accent", ac_v)):
+            row = tk.Frame(win, bg=self._bg); row.pack(fill="x", padx=16, pady=4)
+            tk.Label(row, text=label, width=12, anchor="w", bg=self._bg, fg=self._fg).pack(side="left")
+            sw = tk.Button(row, text="      ", bg=var.get(), relief="flat", width=5)
+            sw.pack(side="left", padx=6)
+            def pick(v=var, b=sw):
+                c = colorchooser.askcolor(v.get(), parent=win)[1]
+                if c: v.set(c); b.configure(bg=c)
+            sw.configure(command=pick)
+        def apply_all():
+            for s in self._slides:
+                s["background"] = bg_v.get(); s["accent"] = ac_v.get()
+            self._slide_master = {"background": bg_v.get(), "accent": ac_v.get()}
+            self._slide_redraw(); self.status.set("Master applied to all slides")
+        def save_master():
+            self._slide_master = {"background": bg_v.get(), "accent": ac_v.get()}
+            self.status.set("Master saved for new slides")
+        bf = tk.Frame(win, bg=self._bg); bf.pack(pady=16)
+        tk.Button(bf, text="Apply to all", command=apply_all, bg="#315C8A", fg="white",
+                  relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Use for new slides", command=save_master, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(bf, text="Close", command=win.destroy, bg="#334155", fg="white",
+                  relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+
     def _slide_add(self):
-        self._slides.insert(self._cur_slide+1,self._empty_slide())
+        s = self._empty_slide()
+        if getattr(self, "_slide_master", None):
+            s.update(self._slide_master)
+        self._slides.insert(self._cur_slide+1,s)
         self._cur_slide+=1; self._slide_redraw()
 
     def _slide_duplicate(self):
