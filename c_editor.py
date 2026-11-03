@@ -1939,10 +1939,16 @@ class Studio(tk.Tk):
         onion_row.columnconfigure(1,weight=1)
         self._onion_prev=tk.IntVar(value=1)
         self._onion_next=tk.IntVar(value=0)
+        self._onion_prev_color=tk.StringVar(value="#3366CC")
+        self._onion_next_color=tk.StringVar(value="#CC3333")
         tk.Label(onion_row,text="Prev",bg=ABG,fg=AFGM,font=("Segoe UI",8)).grid(row=0,column=0,sticky="w")
         ttk.Spinbox(onion_row,from_=0,to=5,textvariable=self._onion_prev,width=4,command=self._anim_redraw).grid(row=0,column=1,sticky="w",padx=4)
+        tk.Button(onion_row,text="color",width=5,command=lambda:self._pick_onion_color(self._onion_prev_color),
+                  bg=self._onion_prev_color.get(),fg="#FFF",relief="flat",font=("Segoe UI",7)).grid(row=0,column=2,sticky="w",padx=4)
         tk.Label(onion_row,text="Next",bg=ABG,fg=AFGM,font=("Segoe UI",8)).grid(row=1,column=0,sticky="w")
         ttk.Spinbox(onion_row,from_=0,to=5,textvariable=self._onion_next,width=4,command=self._anim_redraw).grid(row=1,column=1,sticky="w",padx=4)
+        tk.Button(onion_row,text="color",width=5,command=lambda:self._pick_onion_color(self._onion_next_color),
+                  bg=self._onion_next_color.get(),fg="#FFF",relief="flat",font=("Segoe UI",7)).grid(row=1,column=2,sticky="w",padx=4)
 
         tk.Frame(tool_tab,bg=ABGB,height=1).pack(fill="x",padx=8,pady=4)
         self._anim_grid=tk.BooleanVar(value=False)
@@ -3925,13 +3931,13 @@ class Studio(tk.Tk):
             fi=self._anim_frame-back
             if fi>=0:
                 opac=max(0.1,self._onion_prev.get()/(back+self._onion_prev.get()+1))
-                self._anim_paint_all(c,fi,ox,oy,"#3366CC",opac)
+                self._anim_paint_all(c,fi,ox,oy,self._onion_prev_color.get(),opac)
         # onion skin next
         for fwd in range(1,self._onion_next.get()+1):
             fi=self._anim_frame+fwd
             if fi<self._anim_project["total_frames"]:
                 opac=max(0.1,self._onion_next.get()/(fwd+self._onion_next.get()+1))
-                self._anim_paint_all(c,fi,ox,oy,"#CC3333",opac)
+                self._anim_paint_all(c,fi,ox,oy,self._onion_next_color.get(),opac)
         # actual layers
         for layer in self._anim_project["layers"]:
             if layer.get("visible",True):
@@ -4078,6 +4084,11 @@ class Studio(tk.Tk):
         if hasattr(self,"_anim_color_swatch"): self._anim_color_swatch.configure(bg=c)
         if hasattr(self,"_anim_color_lbl"):    self._anim_color_lbl.configure(bg=c)
 
+    def _pick_onion_color(self,var):
+        c=colorchooser.askcolor(var.get(),parent=self)[1]
+        if c:
+            var.set(c)
+            self._anim_redraw()
     def _anim_go_frame(self,d:int):
         total=self._anim_project["total_frames"]
         self._anim_frame=max(0,min(total-1,self._anim_frame+d)); self._anim_redraw()
