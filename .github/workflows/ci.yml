@@ -20,4 +20,15 @@ jobs:
         working-directory: app
         run: flutter analyze
 
-  # No tests yet; add when available.
+  python-suite:
+    name: Python desktop suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile c_editor.py suite_core.py creative_departments.py
+      - name: Smoke tests
+        run: python smoke_test.py
