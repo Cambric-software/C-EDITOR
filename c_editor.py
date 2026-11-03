@@ -774,6 +774,7 @@ class Studio(tk.Tk):
             self._tc_btn = _btn("Track changes", self._toggle_track_changes)
             _btn("Accept all", self._accept_all_changes)
             _btn("Reject all", self._reject_all_changes)
+            _btn("Comment", self._doc_comment)
             _sep()
             self.family=tk.StringVar(value="Segoe UI")
             self.fsize=tk.IntVar(value=12)
@@ -2409,6 +2410,52 @@ class Studio(tk.Tk):
     def _answer_lines(self):
         n=simpledialog.askinteger(APP,"Number of answer lines",initialvalue=5,minvalue=1,maxvalue=30,parent=self)
         if n: self._insert("\n"+"".join("________________________________________________________________\n" for _ in range(n)))
+
+    def _doc_comment(self):
+        txt = simpledialog.askstring(APP, "Comment text:", parent=self)
+        if not txt: return
+        if not hasattr(self, "_comments"): self._comments = []
+        marker = f"[C{len(self._comments)+1}]"
+        pos = self.editor.index("insert")
+        self.editor.insert(pos, marker)
+        try:
+            self.editor.tag_add("comment", pos, pos + ("+" + str(len(marker)) + "c"))
+            self.editor.tag_configure("comment", foreground="#2563EB", background="#EFF6FF")
+        except Exception:
+            pass
+        self._comments.append({"marker": marker, "text": txt, "pos": pos})
+        self._dirt(); self._snapshot()
+        self.status.set(f"Comment {marker} added.")
+        self._show_comments()
+
+    def _show_comments(self):
+        if not getattr(self, "_comments", []):
+            messagebox.showinfo(APP, "No comments yet.", parent=self); return
+        win = tk.Toplevel(self); win.title("Comments"); win.transient(self)
+        win.geometry("420x360")
+        lb = tk.Listbox(win, bg=self._surface, fg=self._fg, font=("Segoe UI", 10),
+                        selectbackground="#3B82F6", selectforeground="#FFF", relief="flat", bd=0)
+        sb = ttk.Scrollbar(win, orient="vertical", command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        lb.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        for c in self._comments:
+            lb.insert("end", f"{c['marker']}: {c['text']}")
+        def _goto(e=None):
+            s = lb.curselection()
+            if not s: return
+            c = self._comments[s[0]]
+            try: self.editor.see(c["pos"]); self.editor.mark_set("insert", c["pos"])
+            except Exception: pass
+            win.destroy()
+        lb.bind("<Double-Button-1>", _goto)
+        tk.Button(win, text="Go to", command=_goto).pack(pady=4)
+        tk.Button(win, text="Close", command=win.destroy).pack(pady=4)
+
+    def _clear_comments(self):
+        self.editor.tag_remove("comment", "1.0", "end")
+        self._comments = []
+        self.status.set("Comments cleared.")
 
     def _doc_toc(self):
         # Generate a table of contents from Heading 1/2/3 styles.
