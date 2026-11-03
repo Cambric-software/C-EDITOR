@@ -2622,6 +2622,14 @@ class Studio(tk.Tk):
                             fill="#888888",outline="",stipple="gray25")
         c.create_rectangle(ox,oy,ox+int(pw*scale),oy+int(ph*scale),
                             fill=pg.background,outline=PALETTE["border"])
+        # alignment guides while dragging
+        for kind, val in getattr(self, "_drag_guides", []):
+            if kind == "v":
+                c.create_line(ox+int(val*scale), oy, ox+int(val*scale), oy+int(ph*scale),
+                              fill="#F59E0B", dash=(4, 3), width=1)
+            else:
+                c.create_line(ox, oy+int(val*scale), ox+int(pw*scale), oy+int(val*scale),
+                              fill="#F59E0B", dash=(4, 3), width=1)
         for obj in pg.objects:
             if not obj.opacity: continue
             x0=ox+int(obj.x*scale); y0=oy+int(obj.y*scale)
@@ -2713,6 +2721,7 @@ class Studio(tk.Tk):
     def _dc_down(self,e):
         self._sel_obj=self._dc_hit(e.x,e.y); self._drag_start=(e.x,e.y)
         self._drag_orig=(self._sel_obj.x,self._sel_obj.y) if self._sel_obj else (0,0)
+        self._drag_guides=[]
         if self._sel_obj: self._dp_load_obj(self._sel_obj)
         self._dc_redraw()
 
@@ -2727,9 +2736,30 @@ class Studio(tk.Tk):
             gs=20; nx=round(nx/gs)*gs; ny=round(ny/gs)*gs
         self._sel_obj.x=nx
         self._sel_obj.y=ny
+        # alignment guides
+        self._drag_guides=[]
+        pg=self._dp()
+        if pg:
+            sx,sy=self._sel_obj.x,self._sel_obj.y
+            sw,sh=self._sel_obj.w,self._sel_obj.h
+            scx,sy_c=sx+sw/2, sy+sh/2
+            for o in pg.objects:
+                if o is self._sel_obj: continue
+                ox,oy,ow,oh=o.x,o.y,o.w,o.h
+                ocx,ocy=ox+ow/2, oy+oh/2
+                # vertical alignment (centers or edges)
+                for a in (sx, scx, sx+sw):
+                    for b in (ox, ocx, ox+ow):
+                        if abs(a-b)<4:
+                            self._drag_guides.append(("v", b))
+                # horizontal alignment
+                for a in (sy, sy_c, sy+sh):
+                    for b in (oy, ocy, oy+oh):
+                        if abs(a-b)<4:
+                            self._drag_guides.append(("h", b))
         self._dc_redraw()
 
-    def _dc_up(self,e): self._drag_start=None
+    def _dc_up(self,e): self._drag_start=None; self._drag_guides=[]; self._dc_redraw()
 
     def _dp_load_obj(self,obj:DesignObject):
         self._dp_kind.set(obj.kind); self._dp_x.set(round(obj.x,1)); self._dp_y.set(round(obj.y,1))
