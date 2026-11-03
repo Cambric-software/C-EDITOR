@@ -957,6 +957,7 @@ class Studio(tk.Tk):
             _sep()
             _btn("▶ Present",self._present,"accent")
             _btn("📤 PPTX",self._slide_export_pptx)
+            _btn("Notes",self._slide_export_notes)
             _sep()
             _label("Transition:")
             self._slide_trans_var=tk.StringVar(value="Fade")
@@ -3589,6 +3590,27 @@ class Studio(tk.Tk):
         if hasattr(self,"_slide_trans_var"):
             self._slides[self._cur_slide]["transition"]=self._slide_trans_var.get()
         self._slide_redraw()
+
+    def _slide_export_notes(self):
+        p = filedialog.asksaveasfilename(parent=self, defaultextension=".txt",
+                                         filetypes=[("Text", "*.txt"), ("Markdown", "*.md")])
+        if not p: return
+        try:
+            lines = []
+            for i, sd in enumerate(self._slides, 1):
+                title = (sd.get("text", "") or "").splitlines()[0] if sd.get("text", "").strip() else f"Slide {i}"
+                lines.append(f"Slide {i}: {title}")
+                notes = sd.get("notes", "")
+                if notes.strip():
+                    lines.append("  Notes: " + notes.replace("\n", " "))
+                else:
+                    lines.append("  (no notes)")
+                lines.append("")
+            Path(p).write_text("\n".join(lines), encoding="utf-8")
+            self.status.set(f"Notes exported: {Path(p).name}")
+            messagebox.showinfo("Done", f"Notes saved:\n{p}", parent=self)
+        except Exception as exc:
+            messagebox.showerror(APP, str(exc), parent=self)
 
     def _slide_export_pptx(self):
         try: from pptx import Presentation; from pptx.util import Inches,Pt
