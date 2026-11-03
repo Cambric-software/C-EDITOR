@@ -4770,7 +4770,7 @@ class Studio(tk.Tk):
             if fo>0: af.append("afade=t=out:st=%.3f:d=%.3f"%(max(0,out_dur-fo),min(fo,out_dur)))
             return vf,af
         try:
-            segments=[]
+            segments=[]; durs=[]
             for i,c in enumerate(clips,1):
                 path=Path(c["path"]); is_img=path.suffix.lower() in image_ext
                 try: s=float(c.get("start",0) or 0)
@@ -4804,13 +4804,38 @@ class Studio(tk.Tk):
                         "-c:a","aac","-b:a","160k","-ar","44100","-ac","2","-shortest",str(seg)]
                 step(i-1,f"Rendering clip {i} of {len(clips)}...")
                 _sp.run(cmd,check=True,capture_output=True)
-                segments.append(seg)
+                segments.append(seg); durs.append(out_dur)
             step(len(clips),"Joining clips...")
             manifest=work/"concat.txt"
             manifest.write_text("\n".join("file '%s'"%s.as_posix() for s in segments),encoding="utf-8")
             joined=work/"joined.mp4"
-            _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",str(joined)],
-                    check=True,capture_output=True)
+            trans_map={"Fade":"fade","Dissolve":"fade","Slide left":"slideleft",
+                       "Zoom in":"zoomin","Zoom out":"zoomout","Blur":"fade","Cut":"fade"}
+            any_trans=any((c.get("transition","Cut") not in ("Cut","")) for c in clips)
+            if len(segments)>1 and any_trans:
+                try:
+                    cmd=[ff,"-y"]
+                    for seg in segments: cmd += ["-i",str(seg)]
+                    fc=[]; cur="[0:v]"; cura="[0:a]"; off=0.0
+                    for i in range(1,len(segments)):
+                        tr=trans_map.get(clips[i].get("transition","Cut"),"fade")
+                        d=0.45 if clips[i].get("transition","Cut") not in ("Cut","") else 0.001
+                        d=min(d,max(0.001,durs[i-1]*0.45),max(0.001,durs[i]*0.45))
+                        off += durs[i-1]-d
+                        fc.append(f"{cur}[{i}:v]xfade=transition={tr}:duration={d:.3f}:offset={off:.3f}[v{i}]")
+                        fc.append(f"{cura}[{i}:a]acrossfade=d={d:.3f}:c1=tri:c2=tri[a{i}]")
+                        cur=f"[v{i}]"; cura=f"[a{i}]"
+                    fc.append(f"{cur}null[vout]"); fc.append(f"{cura}anull[aout]")
+                    cmd += ["-filter_complex",";".join(fc),"-map","[vout]","-map","[aout]",
+                            "-c:v","libx264","-preset","fast","-crf","22","-pix_fmt","yuv420p",
+                            "-c:a","aac","-b:a","160k",str(joined)]
+                    _sp.run(cmd,check=True,capture_output=True)
+                except Exception:
+                    _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",str(joined)],
+                            check=True,capture_output=True)
+            else:
+                _sp.run([ff,"-y","-f","concat","-safe","0","-i",str(manifest),"-c","copy",str(joined)],
+                        check=True,capture_output=True)
             # burn in titles + captions
             step(len(clips),"Burning in titles and captions...")
             def _drawtext(i, text, s, e, size, y, color):
