@@ -1036,6 +1036,11 @@ class Studio(tk.Tk):
             _sep()
             _btn("▶ Play",self._anim_play_toggle)
             _sep()
+            _btn("Copy f",self._anim_copy_frame)
+            _btn("Paste f",self._anim_paste_frame)
+            _btn("Insert f",self._anim_insert_frame)
+            _btn("Reverse",self._anim_reverse_frames)
+            _sep()
             _btn("💾 Save",self._anim_save,"accent")
             _btn("📂 Open",self._anim_open)
             _btn("🎞 GIF",self._anim_export_gif)
@@ -4738,6 +4743,41 @@ class Studio(tk.Tk):
     def _anim_on_layer_select(self,e=None):
         s=self._anim_layer_lb.curselection()
         if s: self._anim_layer=s[0]; self._anim_layer_opac.set(self._anim_project["layers"][self._anim_layer].get("opacity",1.0)); self._anim_refresh_lists()
+
+    def _anim_copy_frame(self):
+        self._anim_clipboard = {l["id"]: copy.deepcopy(l["frames"].get(str(self._anim_frame), []))
+                                for l in self._anim_project["layers"]}
+        self.status.set(f"Frame {self._anim_frame+1} copied")
+
+    def _anim_paste_frame(self):
+        cb = getattr(self, "_anim_clipboard", None)
+        if not cb:
+            messagebox.showinfo(APP, "Copy a frame first.", parent=self); return
+        for layer in self._anim_project["layers"]:
+            layer["frames"][str(self._anim_frame)] = copy.deepcopy(cb.get(layer["id"], []))
+        self._anim_redraw(); self.status.set(f"Pasted into frame {self._anim_frame+1}")
+
+    def _anim_insert_frame(self):
+        fi = self._anim_frame
+        for layer in self._anim_project["layers"]:
+            nf = {}
+            for k, v in layer["frames"].items():
+                idx = int(k)
+                nf[str(idx+1) if idx >= fi else k] = v
+            layer["frames"] = nf
+        self._anim_project["total_frames"] += 1
+        self._anim_scrubber.configure(to=max(0, self._anim_project["total_frames"]-1))
+        self._anim_redraw(); self.status.set(f"Inserted blank frame at {fi+1}")
+
+    def _anim_reverse_frames(self):
+        total = self._anim_project["total_frames"]
+        for layer in self._anim_project["layers"]:
+            nf = {}
+            for k, v in layer["frames"].items():
+                idx = int(k)
+                nf[str(total-1-idx)] = v
+            layer["frames"] = nf
+        self._anim_redraw(); self.status.set("Frames reversed")
 
     def _anim_add_frame(self):
         self._anim_project["total_frames"]+=1
