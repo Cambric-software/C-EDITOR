@@ -898,6 +898,7 @@ class Studio(tk.Tk):
 
         elif dept=="design":
             _btn("New",self._design_new)
+            _btn("Open",self._design_open)
             _btn("Save…",self._design_save)
             _btn("Export PNG",self._design_export_png,"accent")
             _btn("Export SVG",self._design_export_svg)
@@ -3418,6 +3419,27 @@ class Studio(tk.Tk):
     def _design_new(self):
         self.design_proj=DesignProject(); self.design_page=0; self._sel_obj=None; self._selection=[]; self._dc_redraw()
 
+    def _design_open(self):
+        p = filedialog.askopenfilename(parent=self, filetypes=[("Design project","*.json")])
+        if not p: return
+        try:
+            raw = json.loads(Path(p).read_text(encoding="utf-8"))
+            data = raw.get("project", raw)
+            pages = []
+            for pg in data.get("pages", []):
+                objs = []
+                for o in pg.get("objects", []):
+                    fields = {k: v for k, v in o.items() if k in DesignObject.__dataclass_fields__}
+                    objs.append(DesignObject(**fields))
+                pages.append(DesignPage(objects=objs, background=pg.get("background", "#FFFFFF")))
+            self.design_proj = DesignProject(title=data.get("title","Untitled Design"),
+                width=int(data.get("width",1080)), height=int(data.get("height",1080)),
+                pages=pages or [DesignPage()])
+            self.design_page = 0; self._sel_obj = None; self._selection = []
+            self._dc_redraw(); self.status.set(f"Design opened: {Path(p).name}")
+        except Exception as exc:
+            messagebox.showerror(APP, str(exc), parent=self)
+
     def _design_save(self):
         p=filedialog.asksaveasfilename(parent=self,defaultextension=".json",
                                         filetypes=[("Design project","*.json")])
@@ -3430,7 +3452,8 @@ class Studio(tk.Tk):
         except ImportError: messagebox.showinfo(APP,"PNG export needs Pillow.\npip install pillow"); return
         pg=self._dp()
         if pg is None: return
-        p=filedialog.asksaveasfilename(parent=self,defaultextension=".png",filetypes=[("PNG","*.png")])
+        p=filedialog.asksaveasfilename(parent=self,defaultextension=".png",
+            filetypes=[("PNG","*.png"),("JPEG","*.jpg *.jpeg"),("WebP","*.webp")])
         if not p: return
         pw=self.design_proj.width; ph=self.design_proj.height
         im=Image.new("RGB",(pw,ph),pg.background); d=PD.Draw(im)
