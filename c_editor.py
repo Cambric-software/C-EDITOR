@@ -182,6 +182,9 @@ class DesignObject:
     font_it:    bool  = False
     text_color: str   = "#FFFFFF"
     image_path: str   = ""
+    fx_brightness: float = 1.0
+    fx_contrast:   float = 1.0
+    fx_blur:       float = 0.0
     locked:     bool  = False
     group:      str   = ""
     id:         str   = field(default_factory=new_id)
@@ -899,6 +902,7 @@ class Studio(tk.Tk):
             _sep()
             for t,fn in [("Text",self._design_add_text),
                           ("Rect",lambda:self._design_add_shape("rect")),
+                          ("RoundRect",lambda:self._design_add_shape("roundrect")),
                           ("Ellipse",lambda:self._design_add_shape("ellipse")),
                           ("Triangle",lambda:self._design_add_shape("triangle")),
                           ("Star",lambda:self._design_add_shape("star")),
@@ -909,6 +913,7 @@ class Studio(tk.Tk):
                           ("Arrow",lambda:self._design_add_shape("arrow")),
                           ("Image",self._design_add_image)]:
                 _btn(t,fn)
+            _btn("Image FX", self._design_image_fx)
             _sep()
             _btn("Duplicate", self._design_duplicate)
             _btn("Delete",    self._design_delete, "danger")
@@ -2769,6 +2774,9 @@ class Studio(tk.Tk):
             sw=max(1,int(obj.stroke_w*scale)); k=obj.kind
             if k=="rect":
                 c.create_rectangle(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
+            elif k=="roundrect":
+                pts=self._rounded_pts(x0,y0,x1,y1,min(28,(x1-x0)//4,(y1-y0)//4))
+                c.create_polygon(*[v for p in pts for v in p],fill=fill,outline=stroke,width=sw,smooth=True)
             elif k=="ellipse":
                 c.create_oval(x0,y0,x1,y1,fill=fill,outline=stroke,width=sw)
             elif k=="triangle":
@@ -2832,6 +2840,13 @@ class Studio(tk.Tk):
                     from PIL import Image,ImageTk
                     im=Image.open(obj.image_path)
                     im=im.resize((max(1,int(obj.w*scale)),max(1,int(obj.h*scale))),Image.LANCZOS)
+                    if getattr(obj,"fx_brightness",1.0)!=1.0 or getattr(obj,"fx_contrast",1.0)!=1.0:
+                        from PIL import ImageEnhance
+                        im=ImageEnhance.Brightness(im).enhance(max(0,obj.fx_brightness))
+                        im=ImageEnhance.Contrast(im).enhance(max(0,obj.fx_contrast))
+                    if getattr(obj,"fx_blur",0.0)>0:
+                        from PIL import ImageFilter
+                        im=im.filter(ImageFilter.GaussianBlur(obj.fx_blur))
                     photo=ImageTk.PhotoImage(im); c._img_refs.append(photo)
                     c.create_image(x0,y0,image=photo,anchor="nw")
                 except Exception:
@@ -2958,6 +2973,12 @@ class Studio(tk.Tk):
                           text_color="#1E293B",font_sz=32,font_bold=True)
         pg.objects.append(obj); self._sel_obj=obj; self._dc_redraw()
 
+    def _rounded_pts(self,x0,y0,x1,y1,r):
+        r=max(0,min(r,(x1-x0)//2,(y1-y0)//2))
+        return [(x0+r,y0),(x1-r,y0),(x1,y0),(x1,y0+r),
+                (x1,y1-r),(x1,y1),(x1-r,y1),(x0+r,y1),
+                (x0,y1),(x0,y1-r),(x0,y0+r),(x0,y0)]
+
     def _design_add_shape(self,kind:str):
         pg=self._dp()
         if pg is None: return
@@ -2971,6 +2992,40 @@ class Studio(tk.Tk):
         if pg is None: return
         obj=DesignObject(kind="image",x=50,y=50,w=300,h=200,image_path=p)
         pg.objects.append(obj); self._sel_obj=obj; self._dc_redraw()
+
+    def _design_image_fx(self):
+        src=[o for o in (list(self._selection) or ([self._sel_obj] if self._sel_obj else [])) if o.kind=="image"]
+        if not src:
+            messagebox.showinfo(APP,"Select an image object first.",parent=self); return
+        first=src[0]
+        win=tk.Toplevel(self); win.title("Image Effects"); win.transient(self)
+        win.geometry("380x300"); win.configure(bg=self._bg)
+        bv=tk.DoubleVar(value=getattr(first,"fx_brightness",1.0))
+        cv=tk.DoubleVar(value=getattr(first,"fx_contrast",1.0))
+        zv=tk.DoubleVar(value=getattr(first,"fx_blur",0.0))
+        def row(label,var,lo,hi,res):
+            f=tk.Frame(win,bg=self._bg); f.pack(fill="x",padx=14,pady=6)
+            tk.Label(f,text=label,width=12,anchor="w",bg=self._bg,fg=self._fg,
+                     font=("Segoe UI",9)).pack(side="left")
+            tk.Scale(f,from_=lo,to=hi,resolution=res,orient="horizontal",variable=var,
+                     showvalue=True,length=210,bg=self._bg,fg=self._fg,
+                     highlightthickness=0,troughcolor="#334155").pack(side="left")
+        row("Brightness",bv,0.1,3.0,0.05)
+        row("Contrast",cv,0.1,3.0,0.05)
+        row("Blur",zv,0.0,20.0,0.5)
+        def apply_fx():
+            for o in src:
+                o.fx_brightness=bv.get(); o.fx_contrast=cv.get(); o.fx_blur=zv.get()
+            self._dc_redraw(); self.status.set(f"Image effects applied to {len(src)} image(s)")
+        def reset_fx():
+            bv.set(1.0); cv.set(1.0); zv.set(0.0); apply_fx()
+        bf=tk.Frame(win,bg=self._bg); bf.pack(pady=10)
+        tk.Button(bf,text="Apply",command=apply_fx,bg="#315C8A",fg="white",relief="flat",
+                  font=("Segoe UI",9,"bold"),padx=14,pady=5).pack(side="left",padx=4)
+        tk.Button(bf,text="Reset",command=reset_fx,bg="#334155",fg="white",relief="flat",
+                  font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
+        tk.Button(bf,text="Close",command=win.destroy,bg="#334155",fg="white",relief="flat",
+                  font=("Segoe UI",9),padx=12,pady=5).pack(side="left",padx=4)
 
     def _design_duplicate(self):
         src=list(self._selection) or ([self._sel_obj] if self._sel_obj else [])
@@ -3160,6 +3215,9 @@ class Studio(tk.Tk):
             x0,y0=int(obj.x),int(obj.y); x1,y1=x0+int(obj.w),y0+int(obj.h)
             fill=obj.fill or None; stroke=obj.stroke or None; sw=obj.stroke_w; k=obj.kind
             if k=="rect":   d.rectangle([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
+            elif k=="roundrect":
+                rr=min(28,max(0,(x1-x0)//4),max(0,(y1-y0)//4))
+                d.rounded_rectangle([x0,y0,x1,y1],radius=rr,fill=fill,outline=stroke,width=sw)
             elif k=="ellipse": d.ellipse([x0,y0,x1,y1],fill=fill,outline=stroke,width=sw)
             elif k=="triangle":
                 d.polygon([(x0+x1)//2,y0,x1,y1,x0,y1],fill=fill,outline=stroke,width=sw)
@@ -3201,6 +3259,13 @@ class Studio(tk.Tk):
             elif k=="image":
                 try:
                     src=Image.open(obj.image_path).resize((max(1,int(obj.w)),max(1,int(obj.h))),Image.LANCZOS)
+                    if getattr(obj,"fx_brightness",1.0)!=1.0 or getattr(obj,"fx_contrast",1.0)!=1.0:
+                        from PIL import ImageEnhance
+                        src=ImageEnhance.Brightness(src).enhance(max(0,obj.fx_brightness))
+                        src=ImageEnhance.Contrast(src).enhance(max(0,obj.fx_contrast))
+                    if getattr(obj,"fx_blur",0.0)>0:
+                        from PIL import ImageFilter
+                        src=src.filter(ImageFilter.GaussianBlur(obj.fx_blur))
                     im.paste(src,(x0,y0))
                 except Exception: pass
         im.save(p); self.status.set(f"Design exported: {Path(p).name}")
@@ -3215,9 +3280,13 @@ class Studio(tk.Tk):
                f'<rect width="100%" height="100%" fill="{pg.background}"/>']
         for obj in pg.objects:
             x0,y0,w,h=int(obj.x),int(obj.y),int(obj.w),int(obj.h)
+            x1,y1=x0+w,y0+h
             fill=obj.fill or "none"; stroke=obj.stroke or "none"; k=obj.kind
             if k=="rect":
                 lines.append(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="roundrect":
+                rr=max(0,min(28,w//4,h//4))
+                lines.append(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="{rr}" ry="{rr}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
             elif k=="ellipse":
                 cx,cy,rx,ry=x0+w//2,y0+h//2,w//2,h//2
                 lines.append(f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
@@ -3253,6 +3322,12 @@ class Studio(tk.Tk):
             elif k=="diamond":
                 cx,cy=x0+w/2,y0+h/2
                 lines.append(f'<polygon points="{cx},{y0} {x1},{cy} {cx},{y1} {x0},{cy}" fill="{fill}" stroke="{stroke}" stroke-width="{obj.stroke_w}"/>')
+            elif k=="image":
+                href=Path(obj.image_path).as_uri() if obj.image_path else ""
+                fx=""
+                if getattr(obj,"fx_brightness",1.0)!=1.0 or getattr(obj,"fx_contrast",1.0)!=1.0 or getattr(obj,"fx_blur",0.0)>0:
+                    fx=f' style="filter:brightness({obj.fx_brightness}) contrast({obj.fx_contrast}) blur({obj.fx_blur}px)"'
+                lines.append(f'<image x="{x0}" y="{y0}" width="{w}" height="{h}" preserveAspectRatio="none" href="{href}"{fx}/>')
             elif k=="text":
                 wt="bold" if obj.font_bold else "normal"; sl="italic" if obj.font_it else "normal"
                 lines.append(f'<text x="{x0}" y="{y0+obj.font_sz}" font-family="{obj.font_fam}" font-size="{obj.font_sz}" font-weight="{wt}" font-style="{sl}" fill="{obj.text_color or "#000"}">{html.escape(obj.text or "")}</text>')
